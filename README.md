@@ -422,12 +422,14 @@ Configure the `preview` profile in `eas.json` to output an `.apk`. Native permis
 
 ## 👥 Team
 
-| Name | Role | Contribution |
-|---|---|---|
-| Aesha Shingala | FILL | FILL |
-| FILL | FILL | FILL |
+| Name | 
+|---|
+| Komudi Ekatpure | 
+| Aesha Shingala | 
+| Tithi Jasoliya |
 
-**Team name:** FILL · **College / Institution:** FILL
+
+**Team name:** Herizon · **College / Institution:** Sardar Vallabhbhai Institute of Technology, Surat
 
 ---
 
