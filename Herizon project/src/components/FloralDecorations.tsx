@@ -80,7 +80,7 @@ export const FloralHeroCard: React.FC<FloralHeroCardProps> = ({
               onPress={onExplorePress}
               style={styles.heroActionButton}
             >
-              <Text style={styles.heroActionText}>Explore Today's Health</Text>
+              <Text style={styles.heroActionText}>Explore Today&apos;s Health</Text>
             </TouchableOpacity>
           )}
         </View>

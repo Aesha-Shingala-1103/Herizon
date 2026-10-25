@@ -82,7 +82,7 @@ export default function RootLayout() {
       router.replace('/auth');
     } else if (authState !== 'signed_out' && needsOnboarding && top !== 'onboarding') {
       router.replace('/onboarding');
-    } else if (authState !== 'signed_out' && !needsOnboarding && top === 'onboarding') {
+    } else if (authState !== 'signed_out' && !needsOnboarding && (top === 'onboarding' || top === 'auth')) {
       router.replace('/(tabs)');
     }
   }, [ready, authState, needsOnboarding, segments, router]);

@@ -13,8 +13,12 @@ export interface UserProfile {
   display_name: string;
   date_of_birth?: string;
   age?: number;
+  gender_identity?: string;
   height_cm?: number;
   weight_kg?: number;
+  country_or_region?: string;
+  timezone?: string;
+  menstrual_status?: 'menstruating' | 'irregular' | 'pregnant' | 'postpartum' | 'menopausal' | 'contraception' | 'not_menstruating' | 'prefer_not_to_say';
   emergency_contact_name?: string;
   emergency_contact_phone?: string;
   emergency_contact_consent: boolean;
@@ -22,6 +26,18 @@ export interface UserProfile {
   onboarding_completed: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface HealthcareProvider {
+  id: string;
+  user_id: string;
+  doctor_name: string;
+  specialty?: string;
+  clinic_or_hospital_name?: string;
+  phone_number?: string;
+  email_or_contact?: string;
+  notes?: string;
+  created_at: string;
 }
 
 export interface UserPreferences {

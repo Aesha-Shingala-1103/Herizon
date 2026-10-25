@@ -84,9 +84,9 @@ export default function ChatScreen() {
     <View>
       {urgent && <UrgentAlertBanner alert={urgent} onDismiss={() => setUrgent(null)} />}
       <View style={styles.intro}>
-        <Text style={styles.introTitle}>Hello, I'm your HerHealth guide</Text>
+        <Text style={styles.introTitle}>Hello, I&apos;m your HerHealth guide</Text>
         <Text style={styles.introText}>
-          I can explain health terms and help organise questions for your clinician. I can't diagnose, prescribe, or change
+          I can explain health terms and help organise questions for your clinician. I can&apos;t diagnose, prescribe, or change
           your medicines. For emergencies call 112.
         </Text>
         {messages.length === 0 && STARTERS.map((s) => (
@@ -105,7 +105,7 @@ export default function ChatScreen() {
         <View style={styles.intro}>
           <Text style={styles.introTitle}>AI assistant is off</Text>
           <Text style={styles.introText}>
-            Messages are processed by an external AI service. Turn on "AI data processing" in your profile preferences to use chat.
+            Messages are processed by an external AI service. Turn on &quot;AI data processing&quot; in your profile preferences to use chat.
           </Text>
         </View>
       </SafeAreaView>

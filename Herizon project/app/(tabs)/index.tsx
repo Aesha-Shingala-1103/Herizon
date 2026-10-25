@@ -8,6 +8,7 @@ import {
   RefreshControl,
   Modal,
   TextInput,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -21,7 +22,6 @@ import {
   Moon,
   Calendar,
   Mic,
-  TrendingUp,
   Smile,
   Meh,
   Frown,
@@ -29,7 +29,10 @@ import {
   AlertCircle,
   Footprints,
   Bell,
-  ChevronRight,
+  CheckCircle2,
+  Clock,
+  CalendarDays,
+  Plus,
   Flame,
 } from 'lucide-react-native';
 import Colors from '../../src/theme/colors';
@@ -39,14 +42,17 @@ import Button from '../../src/components/Button';
 import UrgentAlertBanner from '../../src/components/UrgentAlertBanner';
 import { executeVoiceCommand } from '../../src/services/voiceExecutor';
 import VoiceInputModal from '../../src/components/VoiceInputModal';
-import { FloralHeroCard } from '../../src/components/FloralDecorations';
+import { FloralHeroCard, FloralEmptyState } from '../../src/components/FloralDecorations';
 import AppLogo from '../../src/components/AppLogo';
 import { storage } from '../../src/services/storageService';
 import {
   checkUrgentSafetyWarning,
   analyzeSymptomPatterns,
+  calculateCycleEstimates,
   SymptomPatternSummary,
+  CycleEstimation,
 } from '../../src/services/healthCalculations';
+import { MenstrualCalendar } from '../../src/components/MenstrualCalendar';
 import {
   UserProfile,
   UserPreferences,
@@ -54,11 +60,24 @@ import {
   SymptomLog,
   HealthMeasurement,
   Medication,
+  MedicationDoseLog,
   Appointment,
   SleepLog,
+  ActivityLog,
+  MenstrualCycle,
   UrgentSafetyAlert,
   MoodType,
 } from '../../src/types';
+
+interface TodayDoseItem {
+  medicationId: string;
+  medicationName: string;
+  strength?: string;
+  scheduledTime: string;
+  scheduledAt: string;
+  status: 'taken' | 'skipped' | 'missed' | 'pending' | 'snoozed';
+  relationToMeals?: string;
+}
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -68,9 +87,14 @@ export default function HomeScreen() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [preferences, setPreferences] = useState<UserPreferences | null>(null);
   const [todayCheckin, setTodayCheckin] = useState<DailyCheckin | null>(null);
-  const [symptomsToday, setSymptomsToday] = useState<SymptomLog[]>([]);
+  const [, setSymptomsToday] = useState<SymptomLog[]>([]);
+  const [allSymptoms, setAllSymptoms] = useState<SymptomLog[]>([]);
   const [recentPatterns, setRecentPatterns] = useState<SymptomPatternSummary[]>([]);
   const [medications, setMedications] = useState<Medication[]>([]);
+  const [todayDoses, setTodayDoses] = useState<TodayDoseItem[]>([]);
+  const [cycles, setCycles] = useState<MenstrualCycle[]>([]);
+  const [cycleEstimates, setCycleEstimates] = useState<CycleEstimation | null>(null);
+  const [todayActivity, setTodayActivity] = useState<ActivityLog | null>(null);
   const [upcomingAppointments, setUpcomingAppointments] = useState<Appointment[]>([]);
   const [latestSleep, setLatestSleep] = useState<SleepLog | null>(null);
   const [recentMeasurements, setRecentMeasurements] = useState<HealthMeasurement[]>([]);
@@ -84,12 +108,29 @@ export default function HomeScreen() {
   const [val1, setVal1] = useState('');
   const [val2, setVal2] = useState('');
 
+  const [stepsModalVisible, setStepsModalVisible] = useState(false);
+  const [stepInputVal, setStepInputVal] = useState('');
+
+  const [periodModalVisible, setPeriodModalVisible] = useState(false);
+  const [periodStartDate, setPeriodStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [periodFlow, setPeriodFlow] = useState<'spotting' | 'light' | 'medium' | 'heavy'>('medium');
+  const [periodCramps, setPeriodCramps] = useState(3);
+
+  const [calendarModalVisible, setCalendarModalVisible] = useState(false);
+
   // Daily checkin form
   const [selectedMood, setSelectedMood] = useState<MoodType>('okay');
   const [energyRating, setEnergyRating] = useState(7);
   const [checkinNotes, setCheckinNotes] = useState('');
 
   const todayStr = new Date().toISOString().split('T')[0];
+
+  const getGreetingTime = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    return 'Good evening';
+  };
 
   const loadDashboardData = async () => {
     try {
@@ -108,8 +149,9 @@ export default function HomeScreen() {
       }
 
       // Symptoms & patterns
-      const allSymptoms = await storage.getSymptoms();
-      const todaySyms = allSymptoms.filter((s) => s.occurred_at.startsWith(todayStr));
+      const syms = await storage.getSymptoms();
+      setAllSymptoms(syms);
+      const todaySyms = syms.filter((s) => s.occurred_at.startsWith(todayStr));
       setSymptomsToday(todaySyms);
 
       const allSleep = await storage.getSleepLogs();
@@ -118,12 +160,50 @@ export default function HomeScreen() {
       }
 
       // Deterministic patterns
-      const patterns = analyzeSymptomPatterns(allSymptoms, allSleep);
+      const patterns = analyzeSymptomPatterns(syms, allSleep);
       setRecentPatterns(patterns);
 
-      // Medications
+      // Menstrual cycles
+      const cycs = await storage.getMenstrualCycles();
+      setCycles(cycs);
+      const estimates = calculateCycleEstimates(cycs);
+      setCycleEstimates(estimates);
+
+      // Medications and today's dose logs
       const meds = await storage.getMedications();
-      setMedications(meds.filter((m) => m.is_active));
+      const activeMeds = meds.filter((m) => m.is_active);
+      setMedications(activeMeds);
+
+      const doseLogs = await storage.getDoseLogsForDate(todayStr);
+
+      const doseItems: TodayDoseItem[] = [];
+      activeMeds.forEach((m) => {
+        (m.reminder_times || []).forEach((time) => {
+          const scheduledAt = `${todayStr}T${time}`;
+          const log = doseLogs.find(
+            (d) => d.medication_id === m.id && d.scheduled_at === scheduledAt
+          );
+          doseItems.push({
+            medicationId: m.id,
+            medicationName: m.name,
+            strength: m.strength,
+            scheduledTime: time.slice(0, 5),
+            scheduledAt,
+            status: log ? log.status : 'pending',
+            relationToMeals: m.relation_to_meals,
+          });
+        });
+      });
+      doseItems.sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime));
+      setTodayDoses(doseItems);
+
+      // Activity logs
+      const activities = await storage.getActivityLogs();
+      const todayAct = activities.find((a) => a.log_date === todayStr);
+      setTodayActivity(todayAct || null);
+      if (todayAct) {
+        setStepInputVal(String(todayAct.step_count));
+      }
 
       // Appointments
       const apts = await storage.getAppointments();
@@ -207,6 +287,38 @@ export default function HomeScreen() {
     loadDashboardData();
   };
 
+  const handleSaveSteps = async () => {
+    const count = parseInt(stepInputVal, 10);
+    if (isNaN(count) || count < 0) {
+      Alert.alert('Invalid Steps', 'Please enter a valid step count.');
+      return;
+    }
+    await storage.addOrUpdateActivity({
+      log_date: todayStr,
+      step_count: count,
+      source: 'manual',
+    });
+    setStepsModalVisible(false);
+    loadDashboardData();
+  };
+
+  const handleSavePeriod = async () => {
+    if (!periodStartDate) return;
+    await storage.addMenstrualCycle({
+      start_date: periodStartDate,
+      flow_intensity: periodFlow,
+      cramps_severity: periodCramps,
+      is_irregular: false,
+    });
+    setPeriodModalVisible(false);
+    loadDashboardData();
+  };
+
+  const handleTakeDoseQuick = async (medicationId: string, scheduledAt: string) => {
+    await storage.recordDoseAction(medicationId, scheduledAt, 'taken');
+    loadDashboardData();
+  };
+
   const handleVoiceConfirm = async (parsed: any) => {
     const urgent = checkUrgentSafetyWarning(parsed.transcript);
     if (urgent) setActiveUrgentAlert(urgent);
@@ -221,9 +333,24 @@ export default function HomeScreen() {
     day: 'numeric',
   });
 
-  // Calculate quick blood pressure & glucose readings
   const latestBP = recentMeasurements.find((m) => m.measurement_type === 'blood_pressure');
   const latestGlucose = recentMeasurements.find((m) => m.measurement_type === 'blood_glucose');
+
+  // Step calculations
+  const targetSteps = 8000;
+  const currentSteps = todayActivity ? todayActivity.step_count : 0;
+  const stepProgressPercent = Math.min(100, Math.round((currentSteps / targetSteps) * 100));
+  const remainingSteps = Math.max(0, targetSteps - currentSteps);
+
+  // Medication dose stats
+  const totalDosesToday = todayDoses.length;
+  const completedDosesToday = todayDoses.filter((d) => d.status === 'taken').length;
+  const pendingDoses = todayDoses.filter((d) => d.status === 'pending');
+
+  const isMenstruationTracked =
+    preferences?.menstrual_tracking_enabled !== false &&
+    profile?.menstrual_status !== 'menopausal' &&
+    profile?.menstrual_status !== 'not_menstruating';
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
@@ -276,7 +403,7 @@ export default function HomeScreen() {
 
         <View style={styles.greetingBlock}>
           <Text style={styles.greetingTitle}>
-            Hello, {profile?.display_name || 'Ananya'}
+            {getGreetingTime()}, {profile?.display_name || 'Friend'}
           </Text>
           <Text style={styles.headerSubtext}>Welcome to your private wellness space</Text>
         </View>
@@ -297,7 +424,7 @@ export default function HomeScreen() {
               <Text style={styles.checkinPrompt}>How does your body feel today?</Text>
               <Text style={styles.checkinSubtitle}>
                 {todayCheckin
-                  ? `Logged as "${todayCheckin.mood}" • Energy ${todayCheckin.energy_level}/10`
+                  ? `Logged as "${todayCheckin.mood.replace(/_/g, ' ')}" • Energy ${todayCheckin.energy_level}/10`
                   : 'Take 10 seconds to record your mood, energy, and comfort.'}
               </Text>
             </View>
@@ -354,7 +481,176 @@ export default function HomeScreen() {
           </View>
         </Card>
 
-        {/* Movement & Rhythm Tracker Card */}
+        {/* SECTION C: MENSTRUAL HEALTH SUMMARY */}
+        {isMenstruationTracked && (
+          <Card style={styles.cycleSummaryCard} variant="rose">
+            <View style={styles.cycleSummaryHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <View style={styles.cycleIconCircle}>
+                  <Heart size={18} color={Colors.deepBurgundy} />
+                </View>
+                <View>
+                  <Text style={styles.cycleCardTitle}>Menstrual Rhythm</Text>
+                  <Text style={styles.cycleCardSub}>
+                    {cycles.length > 0
+                      ? `${cycleEstimates?.currentPhase ? cycleEstimates.currentPhase.charAt(0).toUpperCase() + cycleEstimates.currentPhase.slice(1) + ' Phase' : 'Cycle tracking'}`
+                      : 'No cycle logged yet'}
+                  </Text>
+                </View>
+              </View>
+
+              <TouchableOpacity
+                onPress={() => setPeriodModalVisible(true)}
+                style={styles.cycleLogBtn}
+              >
+                <Plus size={13} color={Colors.deepBurgundy} />
+                <Text style={styles.cycleLogBtnText}>Log Period</Text>
+              </TouchableOpacity>
+            </View>
+
+            {cycles.length > 0 ? (
+              <View style={styles.cycleMetricsRow}>
+                <View style={styles.cycleMetricBox}>
+                  <Text style={styles.cycleMetricLabel}>Estimated Next Period</Text>
+                  <Text style={styles.cycleMetricVal}>
+                    {cycleEstimates?.estimatedNextPeriodDate
+                      ? new Date(cycleEstimates.estimatedNextPeriodDate).toLocaleDateString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                        })
+                      : 'Calculating...'}
+                  </Text>
+                  <Text style={styles.cycleMetricHint}>* Mathematical estimate</Text>
+                </View>
+
+                <View style={styles.cycleMetricDivider} />
+
+                <View style={styles.cycleMetricBox}>
+                  <Text style={styles.cycleMetricLabel}>Avg Cycle Length</Text>
+                  <Text style={styles.cycleMetricVal}>
+                    {cycleEstimates?.averageCycleLengthDays || 28} days
+                  </Text>
+                  <Text style={styles.cycleMetricHint}>Based on records</Text>
+                </View>
+
+                <View style={styles.cycleMetricDivider} />
+
+                <TouchableOpacity
+                  onPress={() => setCalendarModalVisible(true)}
+                  style={styles.openCalendarBtn}
+                >
+                  <CalendarDays size={18} color={Colors.deepBurgundy} />
+                  <Text style={styles.openCalendarBtnText}>Open Calendar</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={styles.cycleEmptyBox}>
+                <Text style={styles.cycleEmptyText}>
+                  Your cycle predictions, phase windows, and calendar estimates will appear here once you record your first period.
+                </Text>
+                <Button
+                  title="Log Recent Period"
+                  size="small"
+                  variant="primary"
+                  onPress={() => setPeriodModalVisible(true)}
+                  style={{ alignSelf: 'flex-start', marginTop: 8 }}
+                />
+              </View>
+            )}
+          </Card>
+        )}
+
+        {/* SECTION D: TODAY'S MEDICATION SUMMARY */}
+        <Card style={styles.medSummaryCard} variant="lavender">
+          <View style={styles.medSummaryHeader}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <View style={styles.medIconCircle}>
+                <Pill size={18} color={Colors.deepBurgundy} />
+              </View>
+              <View>
+                <Text style={styles.medCardTitle}>Today&apos;s Prescriptions</Text>
+                <Text style={styles.medCardSub}>
+                  {totalDosesToday > 0
+                    ? `${completedDosesToday} of ${totalDosesToday} doses completed`
+                    : `${medications.length} active prescriptions`}
+                </Text>
+              </View>
+            </View>
+
+            <TouchableOpacity
+              onPress={() => router.push('/(tabs)/care')}
+              style={styles.medManageBtn}
+            >
+              <Text style={styles.medManageBtnText}>Manage Care ›</Text>
+            </TouchableOpacity>
+          </View>
+
+          {totalDosesToday > 0 ? (
+            <View style={{ marginTop: 10 }}>
+              {/* Progress bar */}
+              <View style={styles.medProgressBarBg}>
+                <View
+                  style={[
+                    styles.medProgressBarFill,
+                    {
+                      width: `${totalDosesToday > 0 ? (completedDosesToday / totalDosesToday) * 100 : 0}%`,
+                    },
+                  ]}
+                />
+              </View>
+
+              {/* Next dose action */}
+              {pendingDoses.length > 0 ? (
+                <View style={styles.nextDoseRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.nextDoseLabel}>Next scheduled dose:</Text>
+                    <Text style={styles.nextDoseName}>
+                      {pendingDoses[0].medicationName} {pendingDoses[0].strength ? `• ${pendingDoses[0].strength}` : ''}
+                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                      <Clock size={12} color={Colors.deepBurgundy} />
+                      <Text style={styles.nextDoseTime}>{pendingDoses[0].scheduledTime}</Text>
+                    </View>
+                  </View>
+
+                  <TouchableOpacity
+                    onPress={() => handleTakeDoseQuick(pendingDoses[0].medicationId, pendingDoses[0].scheduledAt)}
+                    style={styles.takeDoseBtn}
+                  >
+                    <CheckCircle2 size={14} color={Colors.white} />
+                    <Text style={styles.takeDoseBtnText}>Take Dose</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={styles.allDosesDoneRow}>
+                  <CheckCircle2 size={16} color={Colors.deepBurgundy} />
+                  <Text style={styles.allDosesDoneText}>All doses scheduled for today are complete.</Text>
+                </View>
+              )}
+            </View>
+          ) : medications.length > 0 ? (
+            <View style={styles.medEmptyRow}>
+              <Text style={styles.medEmptyText}>
+                No reminder times configured for today. Open Care to review your medication schedule.
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.medEmptyRow}>
+              <Text style={styles.medEmptyText}>
+                No active medications recorded. Add your prescriptions and reminders in Care.
+              </Text>
+              <Button
+                title="+ Add Medication"
+                size="small"
+                variant="outline"
+                onPress={() => router.push('/(tabs)/care')}
+                style={{ alignSelf: 'flex-start', marginTop: 8 }}
+              />
+            </View>
+          )}
+        </Card>
+
+        {/* Movement & Rhythm Tracker Card (REAL DATA ONLY) */}
         <Card style={styles.movementCard} variant="elevated">
           <View style={styles.movementHeader}>
             <View style={styles.movementTitleRow}>
@@ -366,24 +662,35 @@ export default function HomeScreen() {
                 <Text style={styles.movementSub}>Step goal & vitality</Text>
               </View>
             </View>
-            <View style={styles.streakBadge}>
-              <Flame size={12} color={Colors.deepBurgundy} />
-              <Text style={styles.streakText}>5 Day Streak</Text>
-            </View>
+            <TouchableOpacity
+              onPress={() => setStepsModalVisible(true)}
+              style={styles.logStepsBtn}
+            >
+              <Plus size={12} color={Colors.deepBurgundy} />
+              <Text style={styles.logStepsBtnText}>{todayActivity ? 'Update Steps' : 'Log Steps'}</Text>
+            </TouchableOpacity>
           </View>
 
           <View style={styles.movementBody}>
             <View style={styles.movementMetrics}>
-              <Text style={styles.stepCount}>6,420</Text>
-              <Text style={styles.stepTarget}>of 8,000 daily steps</Text>
+              <Text style={styles.stepCount}>
+                {currentSteps > 0 ? currentSteps.toLocaleString() : '0'}
+              </Text>
+              <Text style={styles.stepTarget}>
+                of {targetSteps.toLocaleString()} daily steps {currentSteps === 0 ? '• Not logged today' : ''}
+              </Text>
               <View style={styles.stepProgressBarBg}>
-                <View style={[styles.stepProgressBarFill, { width: '80%' }]} />
+                <View style={[styles.stepProgressBarFill, { width: `${stepProgressPercent}%` }]} />
               </View>
             </View>
 
             <View style={styles.movementRightSummary}>
-              <Text style={styles.remainingSteps}>1,580</Text>
-              <Text style={styles.remainingLabel}>steps to goal</Text>
+              <Text style={styles.remainingSteps}>
+                {remainingSteps > 0 ? remainingSteps.toLocaleString() : 'Goal reached!'}
+              </Text>
+              <Text style={styles.remainingLabel}>
+                {remainingSteps > 0 ? 'steps to goal' : 'Well done'}
+              </Text>
             </View>
           </View>
         </Card>
@@ -391,8 +698,15 @@ export default function HomeScreen() {
         {/* Quick Health Actions Grid */}
         <View style={styles.sectionHeaderRow}>
           <Text style={styles.sectionTitle}>Quick Actions</Text>
-          <TouchableOpacity onPress={() => router.push('/chat')} accessibilityRole="button" accessibilityLabel="Open health assistant chat" style={{ minHeight: 44, justifyContent: 'center' }}>
-            <Text style={{ color: Colors.deepBurgundy, fontWeight: '600', fontSize: 14 }}>Ask assistant ›</Text>
+          <TouchableOpacity
+            onPress={() => router.push('/chat')}
+            accessibilityRole="button"
+            accessibilityLabel="Open health assistant chat"
+            style={{ minHeight: 44, justifyContent: 'center' }}
+          >
+            <Text style={{ color: Colors.deepBurgundy, fontWeight: '600', fontSize: 14 }}>
+              Ask assistant ›
+            </Text>
           </TouchableOpacity>
         </View>
 
@@ -452,7 +766,7 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Health Overview Cards */}
+        {/* Health Overview Cards (REAL SAVED DATA ONLY) */}
         <View style={styles.sectionHeaderRow}>
           <Text style={styles.sectionTitle}>Health Overview</Text>
           <TouchableOpacity onPress={() => router.push('/(tabs)/log')}>
@@ -462,56 +776,94 @@ export default function HomeScreen() {
 
         <View style={styles.overviewGrid}>
           {/* BP Card */}
-          <Card style={styles.healthMiniCard} variant="lavender">
-            <View style={styles.miniCardHeader}>
-              <Heart size={16} color={Colors.deepBurgundy} />
-              <Text style={styles.miniCardCategory}>Blood Pressure</Text>
-            </View>
-            <Text style={styles.miniCardValue}>
-              {latestBP ? `${latestBP.numeric_value}/${latestBP.secondary_numeric_value || 80}` : '118/76'}
-            </Text>
-            <Text style={styles.miniCardSub}>mmHg • In Normal Range</Text>
-          </Card>
+          <TouchableOpacity
+            style={styles.overviewGridItem}
+            activeOpacity={0.8}
+            onPress={() => {
+              setMeasureType('blood_pressure');
+              setQuickMeasureModalVisible(true);
+            }}
+          >
+            <Card style={styles.healthMiniCard} variant="lavender">
+              <View style={styles.miniCardHeader}>
+                <Heart size={16} color={Colors.deepBurgundy} />
+                <Text style={styles.miniCardCategory}>Blood Pressure</Text>
+              </View>
+              <Text style={styles.miniCardValue}>
+                {latestBP
+                  ? `${latestBP.numeric_value}/${latestBP.secondary_numeric_value || 80}`
+                  : '—'}
+              </Text>
+              <Text style={styles.miniCardSub}>
+                {latestBP ? 'mmHg • Logged' : 'Tap to record BP'}
+              </Text>
+            </Card>
+          </TouchableOpacity>
 
           {/* Blood Glucose Card */}
-          <Card style={styles.healthMiniCard} variant="rose">
-            <View style={styles.miniCardHeader}>
-              <Activity size={16} color={Colors.deepBurgundy} />
-              <Text style={styles.miniCardCategory}>Blood Glucose</Text>
-            </View>
-            <Text style={styles.miniCardValue}>
-              {latestGlucose ? `${latestGlucose.numeric_value}` : '96'}
-            </Text>
-            <Text style={styles.miniCardSub}>
-              {preferences?.blood_glucose_unit || 'mg/dL'} • Fasting
-            </Text>
-          </Card>
+          <TouchableOpacity
+            style={styles.overviewGridItem}
+            activeOpacity={0.8}
+            onPress={() => {
+              setMeasureType('blood_glucose');
+              setQuickMeasureModalVisible(true);
+            }}
+          >
+            <Card style={styles.healthMiniCard} variant="rose">
+              <View style={styles.miniCardHeader}>
+                <Activity size={16} color={Colors.deepBurgundy} />
+                <Text style={styles.miniCardCategory}>Blood Glucose</Text>
+              </View>
+              <Text style={styles.miniCardValue}>
+                {latestGlucose ? `${latestGlucose.numeric_value}` : '—'}
+              </Text>
+              <Text style={styles.miniCardSub}>
+                {latestGlucose
+                  ? `${preferences?.blood_glucose_unit || 'mg/dL'} • Fasting`
+                  : 'Tap to record glucose'}
+              </Text>
+            </Card>
+          </TouchableOpacity>
 
           {/* Medication Card */}
-          <Card style={styles.healthMiniCard} variant="dusty">
-            <View style={styles.miniCardHeader}>
-              <Pill size={16} color={Colors.lavenderSlate} />
-              <Text style={styles.miniCardCategory}>Medications</Text>
-            </View>
-            <Text style={styles.miniCardValue}>
-              {medications.length} Active
-            </Text>
-            <Text style={styles.miniCardSub}>
-              {medications.length > 0 ? medications[0].name : 'No active prescriptions'}
-            </Text>
-          </Card>
+          <TouchableOpacity
+            style={styles.overviewGridItem}
+            activeOpacity={0.8}
+            onPress={() => router.push('/(tabs)/care')}
+          >
+            <Card style={styles.healthMiniCard} variant="dusty">
+              <View style={styles.miniCardHeader}>
+                <Pill size={16} color={Colors.lavenderSlate} />
+                <Text style={styles.miniCardCategory}>Medications</Text>
+              </View>
+              <Text style={styles.miniCardValue}>
+                {medications.length} Active
+              </Text>
+              <Text style={styles.miniCardSub}>
+                {medications.length > 0 ? medications[0].name : 'No active prescriptions'}
+              </Text>
+            </Card>
+          </TouchableOpacity>
 
           {/* Sleep Card */}
-          <Card style={styles.healthMiniCard} variant="elevated">
-            <View style={styles.miniCardHeader}>
-              <Moon size={16} color={Colors.dustyBlue} />
-              <Text style={styles.miniCardCategory}>Rest & Sleep</Text>
-            </View>
-            <Text style={styles.miniCardValue}>
-              {latestSleep ? `${(latestSleep.total_minutes / 60).toFixed(1)}h` : '7.5h'}
-            </Text>
-            <Text style={styles.miniCardSub}>Restorative sleep</Text>
-          </Card>
+          <TouchableOpacity
+            style={styles.overviewGridItem}
+            activeOpacity={0.8}
+            onPress={() => router.push('/(tabs)/log')}
+          >
+            <Card style={styles.healthMiniCard} variant="elevated">
+              <View style={styles.miniCardHeader}>
+                <Moon size={16} color={Colors.dustyBlue} />
+                <Text style={styles.miniCardCategory}>Rest & Sleep</Text>
+              </View>
+              <Text style={styles.miniCardValue}>
+                {latestSleep ? `${(latestSleep.total_minutes / 60).toFixed(1)}h` : '—'}
+              </Text>
+              <Text style={styles.miniCardSub}>
+                {latestSleep ? 'Restorative sleep' : 'Tap to log rest'}
+              </Text>
+            </Card>
+          </TouchableOpacity>
         </View>
 
         {/* Evidence-Based Recurring Patterns */}
@@ -548,7 +900,7 @@ export default function HomeScreen() {
         )}
 
         {/* Upcoming Appointments Card */}
-        {upcomingAppointments.length > 0 && (
+        {upcomingAppointments.length > 0 ? (
           <Card style={styles.appointmentCard} variant="elevated">
             <View style={styles.appointmentHeader}>
               <Calendar size={18} color={Colors.deepBurgundy} />
@@ -571,6 +923,23 @@ export default function HomeScreen() {
               variant="secondary"
               size="small"
               style={{ marginTop: 10 }}
+            />
+          </Card>
+        ) : (
+          <Card style={styles.emptyAppointmentCard} variant="glass">
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+              <Calendar size={16} color={Colors.deepBurgundy} />
+              <Text style={styles.emptyAppointmentTitle}>Upcoming Consultations</Text>
+            </View>
+            <Text style={styles.emptyAppointmentText}>
+              No upcoming appointments recorded. Track your clinical consultations, dates, and doctor questions in Care.
+            </Text>
+            <Button
+              title="Schedule Consultation"
+              size="small"
+              variant="outline"
+              onPress={() => router.push('/(tabs)/care')}
+              style={{ alignSelf: 'flex-start', marginTop: 10 }}
             />
           </Card>
         )}
@@ -706,6 +1075,135 @@ export default function HomeScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Quick Steps Modal */}
+      <Modal visible={stepsModalVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalSheet}>
+            <Text style={styles.modalTitle}>Record Daily Movement</Text>
+            <Text style={styles.modalSub}>Enter total steps walked for today ({formattedDate})</Text>
+
+            <Text style={styles.inputLabelModal}>Step Count</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="e.g. 6500"
+              placeholderTextColor={Colors.mutedText}
+              keyboardType="numeric"
+              value={stepInputVal}
+              onChangeText={setStepInputVal}
+            />
+
+            <View style={styles.modalBtnRow}>
+              <Button
+                title="Cancel"
+                variant="outline"
+                onPress={() => setStepsModalVisible(false)}
+                style={{ flex: 1, marginRight: 8 }}
+              />
+              <Button
+                title="Save Steps"
+                onPress={handleSaveSteps}
+                style={{ flex: 1, marginLeft: 8 }}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Quick Period Log Modal */}
+      <Modal visible={periodModalVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalSheet}>
+            <Text style={styles.modalTitle}>Log Menstrual Cycle</Text>
+            <Text style={styles.modalSub}>Record the start of your period for cycle predictions</Text>
+
+            <Text style={styles.inputLabelModal}>First Day of Period (YYYY-MM-DD)</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor={Colors.mutedText}
+              value={periodStartDate}
+              onChangeText={setPeriodStartDate}
+            />
+
+            <Text style={styles.inputLabelModal}>Flow Intensity</Text>
+            <View style={styles.modalMoodRow}>
+              {(['spotting', 'light', 'medium', 'heavy'] as const).map((f) => (
+                <TouchableOpacity
+                  key={f}
+                  onPress={() => setPeriodFlow(f)}
+                  style={[styles.modalMoodChip, periodFlow === f && styles.modalMoodChipActive]}
+                >
+                  <Text style={[styles.modalMoodChipText, periodFlow === f && styles.modalMoodChipTextActive]}>
+                    {f}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={styles.inputLabelModal}>Cramps Severity (0-10): {periodCramps}/10</Text>
+            <View style={styles.energyRow}>
+              {[0, 2, 4, 6, 8, 10].map((num) => (
+                <TouchableOpacity
+                  key={num}
+                  onPress={() => setPeriodCramps(num)}
+                  style={[styles.energyBtn, periodCramps === num && styles.energyBtnActive]}
+                >
+                  <Text style={[styles.energyBtnText, periodCramps === num && styles.energyBtnTextActive]}>
+                    {num}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <View style={styles.modalBtnRow}>
+              <Button
+                title="Cancel"
+                variant="outline"
+                onPress={() => setPeriodModalVisible(false)}
+                style={{ flex: 1, marginRight: 8 }}
+              />
+              <Button
+                title="Save Period"
+                onPress={handleSavePeriod}
+                style={{ flex: 1, marginLeft: 8 }}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Menstrual Calendar Modal */}
+      <Modal visible={calendarModalVisible} animationType="slide">
+        <SafeAreaView style={{ flex: 1, backgroundColor: Colors.warmPorcelain }}>
+          <View style={styles.calendarModalHeader}>
+            <Text style={styles.calendarModalTitle}>Menstrual Calendar</Text>
+            <TouchableOpacity
+              onPress={() => setCalendarModalVisible(false)}
+              style={styles.calendarCloseBtn}
+            >
+              <Text style={styles.calendarCloseBtnText}>Done</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={{ padding: 16 }}>
+            <MenstrualCalendar
+              cycles={cycles}
+              symptoms={allSymptoms}
+              estimatedNextPeriodDate={cycleEstimates?.estimatedNextPeriodDate}
+              averageCycleLength={cycleEstimates?.averageCycleLengthDays || 28}
+              averagePeriodDuration={cycleEstimates?.averagePeriodDurationDays || 5}
+              onAddCycle={async (c) => {
+                await storage.addMenstrualCycle(c);
+                loadDashboardData();
+              }}
+              onDeleteCycle={async (id) => {
+                await storage.deleteMenstrualCycle(id);
+                loadDashboardData();
+              }}
+            />
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -726,15 +1224,6 @@ const styles = StyleSheet.create({
   },
   greetingBlock: {
     marginBottom: 8,
-  },
-  topHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 8,
-  },
-  headerLeft: {
-    flex: 1,
   },
   dateBadge: {
     flexDirection: 'row',
@@ -868,6 +1357,233 @@ const styles = StyleSheet.create({
     color: Colors.white,
     fontWeight: '700',
   },
+
+  // Cycle summary card styles
+  cycleSummaryCard: {
+    padding: 16,
+    marginVertical: 8,
+  },
+  cycleSummaryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  cycleIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.paleRoseWhite,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cycleCardTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.deepBurgundy,
+    fontFamily: Typography.heading,
+  },
+  cycleCardSub: {
+    fontSize: 12,
+    color: Colors.mutedText,
+  },
+  cycleLogBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.blossomRose,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+  },
+  cycleLogBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.deepBurgundy,
+  },
+  cycleMetricsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.white,
+    borderRadius: 14,
+    padding: 12,
+    marginTop: 6,
+    borderWidth: 1,
+    borderColor: Colors.fineBorder,
+  },
+  cycleMetricBox: {
+    flex: 1,
+  },
+  cycleMetricLabel: {
+    fontSize: 10,
+    color: Colors.mutedText,
+    fontWeight: '600',
+  },
+  cycleMetricVal: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: Colors.deepBurgundy,
+    fontFamily: Typography.numeric,
+    marginTop: 2,
+  },
+  cycleMetricHint: {
+    fontSize: 9,
+    color: Colors.mutedText,
+    marginTop: 1,
+  },
+  cycleMetricDivider: {
+    width: 1,
+    height: 32,
+    backgroundColor: Colors.fineBorder,
+    marginHorizontal: 8,
+  },
+  openCalendarBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  openCalendarBtnText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: Colors.deepBurgundy,
+    marginTop: 3,
+  },
+  cycleEmptyBox: {
+    backgroundColor: Colors.white,
+    borderRadius: 14,
+    padding: 14,
+    marginTop: 6,
+    borderWidth: 1,
+    borderColor: Colors.fineBorder,
+  },
+  cycleEmptyText: {
+    fontSize: 12,
+    color: Colors.mutedText,
+    lineHeight: 18,
+  },
+
+  // Medication summary card styles
+  medSummaryCard: {
+    padding: 16,
+    marginVertical: 8,
+  },
+  medSummaryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  medIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  medCardTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.lavenderSlate,
+    fontFamily: Typography.heading,
+  },
+  medCardSub: {
+    fontSize: 12,
+    color: Colors.mutedText,
+  },
+  medManageBtn: {
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
+  medManageBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.deepBurgundy,
+  },
+  medProgressBarBg: {
+    height: 6,
+    backgroundColor: Colors.white,
+    borderRadius: 3,
+    overflow: 'hidden',
+    marginTop: 8,
+    marginBottom: 10,
+  },
+  medProgressBarFill: {
+    height: '100%',
+    backgroundColor: Colors.deepBurgundy,
+    borderRadius: 3,
+  },
+  nextDoseRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.white,
+    borderRadius: 12,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: Colors.fineBorder,
+  },
+  nextDoseLabel: {
+    fontSize: 10,
+    color: Colors.mutedText,
+    fontWeight: '600',
+  },
+  nextDoseName: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.lavenderSlate,
+    marginTop: 1,
+  },
+  nextDoseTime: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.deepBurgundy,
+  },
+  takeDoseBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.deepBurgundy,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+  },
+  takeDoseBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.white,
+  },
+  allDosesDoneRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: Colors.white,
+    borderRadius: 12,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: Colors.fineBorder,
+  },
+  allDosesDoneText: {
+    fontSize: 12,
+    color: Colors.deepBurgundy,
+    fontWeight: '600',
+  },
+  medEmptyRow: {
+    backgroundColor: Colors.white,
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: Colors.fineBorder,
+  },
+  medEmptyText: {
+    fontSize: 12,
+    color: Colors.mutedText,
+    lineHeight: 17,
+  },
+
+  // Movement Card
   movementCard: {
     padding: 16,
     marginVertical: 8,
@@ -903,18 +1619,18 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: Colors.mutedText,
   },
-  streakBadge: {
+  logStepsBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     backgroundColor: Colors.paleRoseWhite,
-    paddingVertical: 3,
-    paddingHorizontal: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: 'rgba(219, 161, 165, 0.4)',
   },
-  streakText: {
+  logStepsBtnText: {
     fontSize: 11,
     fontWeight: '700',
     color: Colors.deepBurgundy,
@@ -962,6 +1678,8 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: Colors.mutedText,
   },
+
+  // Actions
   sectionHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1017,13 +1735,18 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: Colors.mutedText,
   },
+
+  // Overview
   overviewGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 10,
   },
-  healthMiniCard: {
+  overviewGridItem: {
     width: '48%',
+  },
+  healthMiniCard: {
+    width: '100%',
     padding: 14,
     marginVertical: 0,
   },
@@ -1049,6 +1772,8 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: Colors.mutedText,
   },
+
+  // Patterns
   patternHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1098,6 +1823,8 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     textAlign: 'center',
   },
+
+  // Appointments
   appointmentCard: {
     padding: 16,
     marginTop: 6,
@@ -1125,6 +1852,20 @@ const styles = StyleSheet.create({
   appointmentDate: {
     fontSize: 12,
     color: Colors.mutedText,
+  },
+  emptyAppointmentCard: {
+    padding: 16,
+    marginTop: 6,
+  },
+  emptyAppointmentTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.lavenderSlate,
+  },
+  emptyAppointmentText: {
+    fontSize: 12,
+    color: Colors.mutedText,
+    lineHeight: 17,
   },
 
   // Modal styles
@@ -1236,5 +1977,32 @@ const styles = StyleSheet.create({
   modalBtnRow: {
     flexDirection: 'row',
     marginTop: 8,
+  },
+  calendarModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.fineBorder,
+    backgroundColor: Colors.white,
+  },
+  calendarModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.deepBurgundy,
+    fontFamily: Typography.heading,
+  },
+  calendarCloseBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: Colors.paleRoseWhite,
+  },
+  calendarCloseBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.deepBurgundy,
   },
 });

@@ -253,25 +253,54 @@ export interface CycleEstimation {
   cycleVariabilityDays: number;
   estimatedNextPeriodDate?: string;
   cycleCount: number;
+  currentPhase?: 'follicular' | 'ovulatory' | 'luteal' | 'menstrual' | 'unknown';
   disclaimer: string;
 }
 
-export function calculateCycleEstimates(cycles: { start_date: string; end_date?: string }[]): CycleEstimation {
+export function calculateCycleEstimates(cycles: { start_date: string; end_date?: string; cycle_length_days?: number; period_duration_days?: number }[]): CycleEstimation {
   const disclaimer = 'Cycle dates and lengths are mathematical estimates based on your previous logs. They do not constitute medical advice or reliable contraception.';
 
-  if (!cycles || cycles.length < 2) {
+  if (!cycles || cycles.length === 0) {
     return {
       hasSufficientData: false,
       averageCycleLengthDays: 28,
       averagePeriodDurationDays: 5,
       cycleVariabilityDays: 0,
-      cycleCount: cycles ? cycles.length : 0,
+      cycleCount: 0,
       disclaimer
     };
   }
 
   // Sort ascending
   const sorted = [...cycles].sort((a, b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime());
+
+  const determinePhase = (daysElapsed: number, periodDays: number, cycleDays: number): CycleEstimation['currentPhase'] => {
+    if (daysElapsed < 0) return 'unknown';
+    if (daysElapsed < periodDays) return 'menstrual';
+    if (daysElapsed < Math.floor(cycleDays / 2) - 2) return 'follicular';
+    if (daysElapsed <= Math.floor(cycleDays / 2) + 2) return 'ovulatory';
+    if (daysElapsed <= cycleDays) return 'luteal';
+    return 'unknown';
+  };
+
+  if (sorted.length === 1) {
+    const single = sorted[0];
+    const avgCycle = single.cycle_length_days || 28;
+    const avgPeriod = single.period_duration_days || 5;
+    const lastRecorded = new Date(single.start_date);
+    const nextDate = new Date(lastRecorded.getTime() + avgCycle * 24 * 60 * 60 * 1000);
+    const diffDays = Math.floor((new Date().getTime() - lastRecorded.getTime()) / (1000 * 60 * 60 * 24));
+    return {
+      hasSufficientData: true,
+      averageCycleLengthDays: avgCycle,
+      averagePeriodDurationDays: avgPeriod,
+      cycleVariabilityDays: 0,
+      estimatedNextPeriodDate: isNaN(nextDate.getTime()) ? undefined : nextDate.toISOString().split('T')[0],
+      cycleCount: 1,
+      currentPhase: determinePhase(diffDays, avgPeriod, avgCycle),
+      disclaimer
+    };
+  }
 
   const cycleLengths: number[] = [];
   const periodDurations: number[] = [];
@@ -316,6 +345,7 @@ export function calculateCycleEstimates(cycles: { start_date: string; end_date?:
   const lastRecorded = new Date(sorted[sorted.length - 1].start_date);
   const nextDate = new Date(lastRecorded.getTime() + avgCycle * 24 * 60 * 60 * 1000);
   const estimatedNextPeriodDate = nextDate.toISOString().split('T')[0];
+  const diffDays = Math.floor((new Date().getTime() - lastRecorded.getTime()) / (1000 * 60 * 60 * 24));
 
   return {
     hasSufficientData: cycleLengths.length >= 1,
@@ -324,6 +354,7 @@ export function calculateCycleEstimates(cycles: { start_date: string; end_date?:
     cycleVariabilityDays: variability,
     estimatedNextPeriodDate,
     cycleCount: sorted.length,
+    currentPhase: determinePhase(diffDays, avgPeriod, avgCycle),
     disclaimer
   };
 }

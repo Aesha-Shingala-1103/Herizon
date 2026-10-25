@@ -46,6 +46,17 @@ export default function LogScreen() {
   const [voiceModalVisible, setVoiceModalVisible] = useState(false);
   const [activeUrgentAlert, setActiveUrgentAlert] = useState<UrgentSafetyAlert | null>(null);
 
+  // Tracker Modals
+  const [glucoseModalVisible, setGlucoseModalVisible] = useState(false);
+  const [glucoseVal, setGlucoseVal] = useState('');
+  const [bpModalVisible, setBpModalVisible] = useState(false);
+  const [bpSysVal, setBpSysVal] = useState('');
+  const [bpDiaVal, setBpDiaVal] = useState('');
+  const [periodModalVisible, setPeriodModalVisible] = useState(false);
+  const [periodStartDate, setPeriodStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [periodFlow, setPeriodFlow] = useState<'spotting' | 'light' | 'medium' | 'heavy'>('medium');
+  const [periodCramps, setPeriodCramps] = useState(3);
+
   // Form states
   const [editingId, setEditingId] = useState<string | null>(null);
   const [symptomName, setSymptomName] = useState('');
@@ -167,6 +178,77 @@ export default function LogScreen() {
     loadSymptoms();
   };
 
+  const handleTrackerPress = (title: string) => {
+    if (title.includes('Menstrual')) {
+      setPeriodModalVisible(true);
+    } else if (title.includes('Glucose')) {
+      setGlucoseModalVisible(true);
+    } else if (title.includes('Blood Pressure')) {
+      setBpModalVisible(true);
+    } else if (title.includes('PCOS')) {
+      handleOpenAddModal({
+        name: 'Pelvic Cramps / Hormonal Fatigue',
+        cat: 'reproductive',
+        loc: 'Lower Abdomen / Pelvic',
+      });
+    } else if (title.includes('Anaemia')) {
+      handleOpenAddModal({
+        name: 'Dizziness & Extreme Fatigue',
+        cat: 'general',
+        loc: 'Full Body / Head',
+      });
+    }
+  };
+
+  const handleSaveGlucose = async () => {
+    const num = parseFloat(glucoseVal);
+    if (isNaN(num)) {
+      Alert.alert('Invalid Value', 'Please enter a valid numeric glucose reading.');
+      return;
+    }
+    await storage.addMeasurement({
+      measurement_type: 'blood_glucose',
+      numeric_value: num,
+      unit: 'mg/dL',
+      recorded_at: new Date().toISOString(),
+    });
+    setGlucoseModalVisible(false);
+    setGlucoseVal('');
+    Alert.alert('Saved', 'Blood glucose measurement recorded.');
+  };
+
+  const handleSaveBp = async () => {
+    const sys = parseFloat(bpSysVal);
+    const dia = parseFloat(bpDiaVal);
+    if (isNaN(sys)) {
+      Alert.alert('Invalid Value', 'Please enter a valid systolic blood pressure.');
+      return;
+    }
+    await storage.addMeasurement({
+      measurement_type: 'blood_pressure',
+      numeric_value: sys,
+      secondary_numeric_value: isNaN(dia) ? undefined : dia,
+      unit: 'mmHg',
+      recorded_at: new Date().toISOString(),
+    });
+    setBpModalVisible(false);
+    setBpSysVal('');
+    setBpDiaVal('');
+    Alert.alert('Saved', 'Blood pressure measurement recorded.');
+  };
+
+  const handleSavePeriod = async () => {
+    if (!periodStartDate) return;
+    await storage.addMenstrualCycle({
+      start_date: periodStartDate,
+      flow_intensity: periodFlow,
+      cramps_severity: periodCramps,
+      is_irregular: false,
+    });
+    setPeriodModalVisible(false);
+    Alert.alert('Saved', 'Menstrual cycle entry recorded.');
+  };
+
   const handleExportCsv = async () => {
     if (symptoms.length === 0) {
       Alert.alert('Notice', 'No symptom entries available to export.');
@@ -246,20 +328,26 @@ export default function LogScreen() {
             {healthTrackersList.map((t, idx) => {
               const Icon = t.icon;
               return (
-                <Card key={idx} style={styles.trackerCard} variant="glass">
-                  <View style={styles.trackerRow}>
-                    <View style={[styles.trackerIconCircle, { backgroundColor: Colors.paleRoseWhite }]}>
-                      <Icon size={20} color={t.color} />
+                <TouchableOpacity
+                  key={idx}
+                  activeOpacity={0.8}
+                  onPress={() => handleTrackerPress(t.title)}
+                >
+                  <Card style={styles.trackerCard} variant="glass">
+                    <View style={styles.trackerRow}>
+                      <View style={[styles.trackerIconCircle, { backgroundColor: Colors.paleRoseWhite }]}>
+                        <Icon size={20} color={t.color} />
+                      </View>
+                      <View style={{ flex: 1, marginLeft: 12 }}>
+                        <Text style={styles.trackerTitle}>{t.title}</Text>
+                        <Text style={styles.trackerDesc}>{t.desc}</Text>
+                      </View>
+                      <View style={styles.trackerBadge}>
+                        <Text style={styles.trackerBadgeText}>Record ›</Text>
+                      </View>
                     </View>
-                    <View style={{ flex: 1, marginLeft: 12 }}>
-                      <Text style={styles.trackerTitle}>{t.title}</Text>
-                      <Text style={styles.trackerDesc}>{t.desc}</Text>
-                    </View>
-                    <View style={styles.trackerBadge}>
-                      <Text style={styles.trackerBadgeText}>{t.tag}</Text>
-                    </View>
-                  </View>
-                </Card>
+                  </Card>
+                </TouchableOpacity>
               );
             })}
           </View>
@@ -567,6 +655,142 @@ export default function LogScreen() {
         onClose={() => setVoiceModalVisible(false)}
         onConfirmParsedResult={handleVoiceConfirm}
       />
+
+      {/* Quick Blood Glucose Modal */}
+      <Modal visible={glucoseModalVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalSheet}>
+            <Text style={styles.modalTitle}>Record Blood Glucose</Text>
+            <Text style={styles.modalSub}>Track fasting or post-meal reading in mg/dL</Text>
+            <Text style={styles.modalLabel}>Glucose Reading (mg/dL) *</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="e.g. 98"
+              placeholderTextColor={Colors.mutedText}
+              keyboardType="numeric"
+              value={glucoseVal}
+              onChangeText={setGlucoseVal}
+            />
+            <View style={styles.modalBtnRow}>
+              <Button
+                title="Cancel"
+                variant="outline"
+                onPress={() => setGlucoseModalVisible(false)}
+                style={{ flex: 1, marginRight: 8 }}
+              />
+              <Button
+                title="Save Reading"
+                onPress={handleSaveGlucose}
+                style={{ flex: 1, marginLeft: 8 }}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Quick Blood Pressure Modal */}
+      <Modal visible={bpModalVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalSheet}>
+            <Text style={styles.modalTitle}>Record Blood Pressure</Text>
+            <Text style={styles.modalSub}>Track systolic and diastolic measurements in mmHg</Text>
+            <Text style={styles.modalLabel}>Systolic (Top number, mmHg) *</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="e.g. 118"
+              placeholderTextColor={Colors.mutedText}
+              keyboardType="numeric"
+              value={bpSysVal}
+              onChangeText={setBpSysVal}
+            />
+            <Text style={styles.modalLabel}>Diastolic (Bottom number, mmHg) *</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="e.g. 76"
+              placeholderTextColor={Colors.mutedText}
+              keyboardType="numeric"
+              value={bpDiaVal}
+              onChangeText={setBpDiaVal}
+            />
+            <View style={styles.modalBtnRow}>
+              <Button
+                title="Cancel"
+                variant="outline"
+                onPress={() => setBpModalVisible(false)}
+                style={{ flex: 1, marginRight: 8 }}
+              />
+              <Button
+                title="Save Reading"
+                onPress={handleSaveBp}
+                style={{ flex: 1, marginLeft: 8 }}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Quick Period Log Modal */}
+      <Modal visible={periodModalVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalSheet}>
+            <Text style={styles.modalTitle}>Log Menstrual Cycle</Text>
+            <Text style={styles.modalSub}>Record the start of your cycle for timeline tracking</Text>
+            <Text style={styles.modalLabel}>Start Date (YYYY-MM-DD) *</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={periodStartDate}
+              onChangeText={setPeriodStartDate}
+              placeholderTextColor={Colors.mutedText}
+            />
+            <Text style={styles.modalLabel}>Flow Intensity</Text>
+            <View style={styles.catChipsRow}>
+              {(['spotting', 'light', 'medium', 'heavy'] as const).map((f) => (
+                <TouchableOpacity
+                  key={f}
+                  onPress={() => setPeriodFlow(f)}
+                  style={[styles.catChip, periodFlow === f && styles.catChipActive]}
+                >
+                  <Text style={[styles.catChipText, periodFlow === f && styles.catChipTextActive]}>
+                    {f}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={styles.modalLabel}>Cramps Severity: {periodCramps}/10</Text>
+            <View style={styles.severityRow}>
+              {[0, 2, 4, 6, 8, 10].map((num) => (
+                <TouchableOpacity
+                  key={num}
+                  onPress={() => setPeriodCramps(num)}
+                  style={[styles.severityNumBtn, periodCramps === num && styles.severityNumBtnActive]}
+                >
+                  <Text
+                    style={[
+                      styles.severityNumText,
+                      periodCramps === num && styles.severityNumTextActive,
+                    ]}
+                  >
+                    {num}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={styles.modalBtnRow}>
+              <Button
+                title="Cancel"
+                variant="outline"
+                onPress={() => setPeriodModalVisible(false)}
+                style={{ flex: 1, marginRight: 8 }}
+              />
+              <Button
+                title="Save Period"
+                onPress={handleSavePeriod}
+                style={{ flex: 1, marginLeft: 8 }}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -905,7 +1129,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: Colors.lavenderSlate,
     fontFamily: Typography.heading,
-    marginBottom: 14,
+    marginBottom: 4,
+  },
+  modalSub: {
+    fontSize: 12,
+    color: Colors.mutedText,
+    marginBottom: 12,
   },
   modalLabel: {
     fontSize: 12,

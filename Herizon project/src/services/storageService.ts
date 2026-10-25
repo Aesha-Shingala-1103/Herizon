@@ -28,6 +28,7 @@ import {
   HealthInsight,
   MedicalCondition,
   Allergy,
+  HealthcareProvider,
 } from '../types';
 
 const STORAGE_PREFIX = '@herhealth_';
@@ -95,7 +96,7 @@ export class StorageService {
   public async saveProfile(profile: Partial<UserProfile>): Promise<UserProfile> {
     const existing = (await this.getProfile()) || {
       id: this.currentUserId,
-      display_name: 'Ananya',
+      display_name: profile.display_name || 'User',
       onboarding_completed: false,
       emergency_contact_consent: false,
       created_at: new Date().toISOString(),
@@ -339,6 +340,13 @@ export class StorageService {
     return items[index];
   }
 
+  public async deleteMenstrualCycle(id: string): Promise<boolean> {
+    const items = await this.getMenstrualCycles();
+    const filtered = items.filter((c) => c.id !== id);
+    await this.saveLocalItems('menstrual_cycles', filtered);
+    return filtered.length < items.length;
+  }
+
   // ============================================================================
   // HEALTH MEASUREMENTS
   // ============================================================================
@@ -454,9 +462,53 @@ export class StorageService {
     return items[index];
   }
 
+  public async deleteMedication(id: string): Promise<boolean> {
+    const items = await this.getMedications();
+    const filtered = items.filter((m) => m.id !== id);
+    await this.saveLocalItems('medications', filtered);
+    return filtered.length < items.length;
+  }
+
   public async getDoseLogs(): Promise<MedicationDoseLog[]> {
     const items = await this.getLocalItems<MedicationDoseLog>('medication_dose_logs');
     return items.sort((a, b) => new Date(b.scheduled_at).getTime() - new Date(a.scheduled_at).getTime());
+  }
+
+  public async getDoseLogsForDate(dateStr: string): Promise<MedicationDoseLog[]> {
+    const logs = await this.getDoseLogs();
+    return logs.filter((l) => l.scheduled_at.startsWith(dateStr));
+  }
+
+  public async recordDoseAction(
+    medicationId: string,
+    scheduledAt: string,
+    status: 'taken' | 'skipped' | 'missed',
+    notes?: string
+  ): Promise<MedicationDoseLog> {
+    const logs = await this.getDoseLogs();
+    const existingIndex = logs.findIndex(
+      (l) => l.medication_id === medicationId && l.scheduled_at === scheduledAt
+    );
+
+    const logEntry: MedicationDoseLog = {
+      id: existingIndex >= 0 ? logs[existingIndex].id : 'dose_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+      user_id: this.currentUserId,
+      medication_id: medicationId,
+      scheduled_at: scheduledAt,
+      logged_at: new Date().toISOString(),
+      status,
+      notes,
+      created_at: existingIndex >= 0 ? logs[existingIndex].created_at : new Date().toISOString(),
+    };
+
+    if (existingIndex >= 0) {
+      logs[existingIndex] = logEntry;
+    } else {
+      logs.unshift(logEntry);
+    }
+
+    await this.saveLocalItems('medication_dose_logs', logs);
+    return logEntry;
   }
 
   public async logMedicationDose(dose: Omit<MedicationDoseLog, 'id' | 'user_id' | 'created_at'>): Promise<MedicationDoseLog> {
@@ -502,6 +554,70 @@ export class StorageService {
     items[index] = { ...items[index], ...updates, updated_at: new Date().toISOString() };
     await this.saveLocalItems('appointments', items);
     return items[index];
+  }
+
+  public async deleteAppointment(id: string): Promise<boolean> {
+    const items = await this.getAppointments();
+    const filtered = items.filter((a) => a.id !== id);
+    await this.saveLocalItems('appointments', filtered);
+    return filtered.length < items.length;
+  }
+
+  // ============================================================================
+  // HEALTHCARE PROVIDERS
+  // ============================================================================
+
+  public async getHealthcareProviders(): Promise<HealthcareProvider[]> {
+    return this.getLocalItems<HealthcareProvider>('healthcare_providers');
+  }
+
+  public async saveHealthcareProvider(
+    provider: Omit<HealthcareProvider, 'id' | 'user_id' | 'created_at'>
+  ): Promise<HealthcareProvider> {
+    const items = await this.getHealthcareProviders();
+    const newItem: HealthcareProvider = {
+      ...provider,
+      id: 'prov_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+      user_id: this.currentUserId,
+      created_at: new Date().toISOString(),
+    };
+    items.unshift(newItem);
+    await this.saveLocalItems('healthcare_providers', items);
+    return newItem;
+  }
+
+  public async deleteHealthcareProvider(id: string): Promise<boolean> {
+    const items = await this.getHealthcareProviders();
+    const filtered = items.filter((p) => p.id !== id);
+    await this.saveLocalItems('healthcare_providers', filtered);
+    return filtered.length < items.length;
+  }
+
+  // ============================================================================
+  // ONBOARDING DRAFT (SAVE & RESUME)
+  // ============================================================================
+
+  public async saveOnboardingDraft(draft: any): Promise<void> {
+    try {
+      await AsyncStorage.setItem(this.getKey('onboarding_draft'), JSON.stringify(draft));
+    } catch (e) {
+      console.warn('Could not save onboarding draft:', e);
+    }
+  }
+
+  public async getOnboardingDraft(): Promise<any | null> {
+    try {
+      const stored = await AsyncStorage.getItem(this.getKey('onboarding_draft'));
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  public async clearOnboardingDraft(): Promise<void> {
+    try {
+      await AsyncStorage.removeItem(this.getKey('onboarding_draft'));
+    } catch {}
   }
 
   // ============================================================================
@@ -662,6 +778,8 @@ export class StorageService {
       'medications',
       'medication_dose_logs',
       'appointments',
+      'healthcare_providers',
+      'onboarding_draft',
       'sleep_logs',
       'activity_logs',
       'wellness_goals',

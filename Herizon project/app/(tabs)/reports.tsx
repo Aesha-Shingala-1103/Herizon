@@ -58,34 +58,6 @@ export default function ReportsScreen() {
       const labs = await storage.getLaboratoryResults();
       setDocuments(docs);
       setLabResults(labs);
-
-      // If no labs exist yet, seed a couple of realistic user-confirmed labs so chart demonstrates progression
-      if (labs.length === 0) {
-        await storage.addLaboratoryResult({
-          test_name: 'HbA1c',
-          test_value: 5.9,
-          unit: '%',
-          reference_interval_min: 4.0,
-          reference_interval_max: 5.6,
-          reference_interval_text: '4.0 - 5.6 %',
-          is_outside_lab_range: true,
-          test_date: '2026-08-15',
-          user_confirmed: true,
-        });
-        await storage.addLaboratoryResult({
-          test_name: 'HbA1c',
-          test_value: 5.6,
-          unit: '%',
-          reference_interval_min: 4.0,
-          reference_interval_max: 5.6,
-          reference_interval_text: '4.0 - 5.6 %',
-          is_outside_lab_range: false,
-          test_date: '2026-10-18',
-          user_confirmed: true,
-        });
-        const updatedLabs = await storage.getLaboratoryResults();
-        setLabResults(updatedLabs);
-      }
     } catch (e) {
       console.error('Error loading reports:', e);
     }

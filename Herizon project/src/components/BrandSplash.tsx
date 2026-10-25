@@ -51,8 +51,8 @@ export const BrandSplash: React.FC<Props> = ({ done, onHidden, minDuration = 180
     return () => clearTimeout(t);
   }, [minDuration]);
 
-  const opacity = useRef(new Animated.Value(1)).current;
-  const rise = useRef(new Animated.Value(12)).current;
+  const [opacity] = useState(() => new Animated.Value(1));
+  const [rise] = useState(() => new Animated.Value(12));
   const [gone, setGone] = useState(false);
   const [reduceMotion, setReduceMotion] = useState(false);
   const { width } = useWindowDimensions();
@@ -74,7 +74,7 @@ export const BrandSplash: React.FC<Props> = ({ done, onHidden, minDuration = 180
       setGone(true);
       onHidden?.();
     });
-  }, [done, minElapsed, opacity, reduceMotion, onHidden]);
+  }, [done, minElapsed, reduceMotion, opacity, onHidden]);
 
   if (gone) return null;
   return (

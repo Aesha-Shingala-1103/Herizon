@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -30,29 +30,31 @@ export const PinLockModal: React.FC<PinLockModalProps> = ({
   const [errorMessage, setErrorMessage] = useState('');
   const [biometricsAvailable, setBiometricsAvailable] = useState(false);
 
-  useEffect(() => {
-    if (visible) {
-      setEnteredPin('');
-      setErrorMessage('');
-      checkBiometrics();
-    }
-  }, [visible]);
-
-  const checkBiometrics = async () => {
-    const available = await securityService.isBiometricsAvailable();
-    setBiometricsAvailable(available);
-    if (available) {
-      handleBiometricAuth();
-    }
-  };
-
-  const handleBiometricAuth = async () => {
+  const handleBiometricAuth = useCallback(async () => {
     const success = await securityService.authenticateWithBiometrics();
     if (success) {
       await securityService.updateLastActiveTimestamp();
+      setEnteredPin('');
+      setErrorMessage('');
       onUnlocked();
     }
-  };
+  }, [onUnlocked]);
+
+  useEffect(() => {
+    let active = true;
+    if (visible) {
+      securityService.isBiometricsAvailable().then((available) => {
+        if (!active) return;
+        setBiometricsAvailable(available);
+        if (available) {
+          handleBiometricAuth();
+        }
+      }).catch(() => {});
+    }
+    return () => {
+      active = false;
+    };
+  }, [visible, handleBiometricAuth]);
 
   const handleKeyPress = async (digit: string) => {
     if (enteredPin.length >= 4) return;

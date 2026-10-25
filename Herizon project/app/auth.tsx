@@ -20,7 +20,7 @@ import Button from '../src/components/Button';
 import AppLogo from '../src/components/AppLogo';
 import { supabase, isSupabaseConfigured } from '../src/services/supabase';
 import { storage } from '../src/services/storageService';
-import { startLocalSession } from '../src/services/authSession';
+import { startLocalSession, startSupabaseSession } from '../src/services/authSession';
 
 export default function AuthScreen() {
   const router = useRouter();
@@ -32,11 +32,15 @@ export default function AuthScreen() {
   const [showPassword, setShowPassword] = useState(false);
 
   // Keep the field being typed in visible above the keyboard.
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<any>(null);
   const formY = useRef(0);
   const fieldY = useRef<Record<string, number>>({});
-  const onFormLayout = (e: LayoutChangeEvent) => { formY.current = e.nativeEvent.layout.y; };
-  const onFieldLayout = (key: string) => (e: LayoutChangeEvent) => { fieldY.current[key] = e.nativeEvent.layout.y; };
+  const onFormLayout = (e: LayoutChangeEvent) => {
+    formY.current = e.nativeEvent.layout.y;
+  };
+  const setFieldLayout = (key: string, y: number) => {
+    fieldY.current[key] = y;
+  };
   const scrollToField = (key: string) => {
     setTimeout(() => {
       const y = formY.current + (fieldY.current[key] ?? 0) - 90;
@@ -70,14 +74,18 @@ export default function AuthScreen() {
           });
           if (error) throw error;
           if (data.user) {
-            storage.setUserId(data.user.id);
+            await startSupabaseSession(data.user.id);
             await storage.saveProfile({
               id: data.user.id,
               email: data.user.email,
               display_name: displayName.trim() || 'User',
+              onboarding_completed: false,
             });
-            Alert.alert('Success', 'Account created! Please verify your email if required.');
-            router.replace('/(tabs)');
+            Alert.alert(
+              'Account Created',
+              'Welcome to HerHealth! Let us personalize your health journey.',
+              [{ text: 'Continue', onPress: () => router.replace('/onboarding') }]
+            );
           }
         } else {
           const { data, error } = await supabase.auth.signInWithPassword({
@@ -86,8 +94,13 @@ export default function AuthScreen() {
           });
           if (error) throw error;
           if (data.user) {
-            storage.setUserId(data.user.id);
-            router.replace('/(tabs)');
+            await startSupabaseSession(data.user.id);
+            const profile = await storage.getProfile();
+            if (profile && profile.onboarding_completed) {
+              router.replace('/(tabs)');
+            } else {
+              router.replace('/onboarding');
+            }
           }
         }
       } catch (e: any) {
@@ -111,7 +124,12 @@ export default function AuthScreen() {
 
   const handleContinueAsGuest = async () => {
     await startLocalSession('local_user_default');
-    router.replace('/(tabs)');
+    const profile = await storage.getProfile();
+    if (profile && profile.onboarding_completed) {
+      router.replace('/(tabs)');
+    } else {
+      router.replace('/onboarding');
+    }
   };
 
   return (
@@ -162,13 +180,13 @@ export default function AuthScreen() {
           </View>
 
           {isSignUp && (
-            <View style={styles.inputGroup} onLayout={onFieldLayout('name')}>
+            <View style={styles.inputGroup} onLayout={(e) => setFieldLayout('name', e.nativeEvent.layout.y)}>
               <Text style={styles.inputLabel}>Your Name</Text>
               <View style={styles.inputWrapper}>
                 <User size={18} color={Colors.mutedText} style={styles.inputIcon} />
                 <TextInput
                   style={styles.input}
-                  placeholder="e.g. Ananya Sharma"
+                  placeholder="e.g. Maya Patel"
                   placeholderTextColor={Colors.mutedText}
                   value={displayName}
                   onChangeText={setDisplayName}
@@ -178,7 +196,7 @@ export default function AuthScreen() {
             </View>
           )}
 
-          <View style={styles.inputGroup} onLayout={onFieldLayout('email')}>
+          <View style={styles.inputGroup} onLayout={(e) => setFieldLayout('email', e.nativeEvent.layout.y)}>
             <Text style={styles.inputLabel}>Email Address</Text>
             <View style={styles.inputWrapper}>
               <Mail size={18} color={Colors.mutedText} style={styles.inputIcon} />
@@ -195,7 +213,7 @@ export default function AuthScreen() {
             </View>
           </View>
 
-          <View style={styles.inputGroup} onLayout={onFieldLayout('password')}>
+          <View style={styles.inputGroup} onLayout={(e) => setFieldLayout('password', e.nativeEvent.layout.y)}>
             <Text style={styles.inputLabel}>Password</Text>
             <View style={styles.inputWrapper}>
               <Lock size={18} color={Colors.mutedText} style={styles.inputIcon} />

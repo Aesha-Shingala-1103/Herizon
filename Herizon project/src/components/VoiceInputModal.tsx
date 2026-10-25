@@ -81,9 +81,28 @@ export const VoiceInputModal: React.FC<VoiceInputModalProps> = ({
     }
   }, [isRecording, pulseAnim]);
 
-  // Clean up on unmount or modal close
+  const handleCloseModal = () => {
+    if (webAudioRecorderRef.current) {
+      webAudioRecorderRef.current.cancel();
+      webAudioRecorderRef.current = null;
+    }
+    if (liveSpeechRecognitionRef.current) {
+      liveSpeechRecognitionRef.current.abort();
+      liveSpeechRecognitionRef.current = null;
+    }
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current);
+    }
+    setIsRecording(false);
+    setIsTranscribing(false);
+    setRecordingSeconds(0);
+    setErrorMessage(null);
+    onClose();
+  };
+
+  // Clean up recording on unmount
   useEffect(() => {
-    if (!visible) {
+    return () => {
       if (webAudioRecorderRef.current) {
         webAudioRecorderRef.current.cancel();
         webAudioRecorderRef.current = null;
@@ -95,12 +114,8 @@ export const VoiceInputModal: React.FC<VoiceInputModalProps> = ({
       if (timerIntervalRef.current) {
         clearInterval(timerIntervalRef.current);
       }
-      setIsRecording(false);
-      setIsTranscribing(false);
-      setRecordingSeconds(0);
-      setErrorMessage(null);
-    }
-  }, [visible]);
+    };
+  }, []);
 
   const testPhrases = [
     { label: 'Hinglish Headache', text: 'Aaj subah se headache ho raha hai.' },
@@ -310,7 +325,7 @@ export const VoiceInputModal: React.FC<VoiceInputModalProps> = ({
               <Volume2 color={Colors.primaryTeal} size={22} />
               <Text style={styles.title}>Voice Health Logging</Text>
             </View>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+            <TouchableOpacity onPress={handleCloseModal} style={styles.closeBtn}>
               <X size={20} color={Colors.textSecondary} />
             </TouchableOpacity>
           </View>

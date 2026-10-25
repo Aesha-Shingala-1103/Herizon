@@ -9,6 +9,7 @@ import {
   TextInput,
   Alert,
   Linking,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -21,6 +22,13 @@ import {
   PhoneCall,
   AlertTriangle,
   Sparkles,
+  Trash2,
+  ChevronLeft,
+  ChevronRight,
+  Stethoscope,
+  X,
+  Bell,
+  CheckCircle2,
 } from 'lucide-react-native';
 import Colors from '../../src/theme/colors';
 import Typography from '../../src/theme/typography';
@@ -33,10 +41,14 @@ import { Medication, MedicationDoseLog, Appointment, UserProfile } from '../../s
 
 export default function CareScreen() {
   const router = useRouter();
+  const [activeTab, setActiveTab] = useState<'medications' | 'appointments'>('medications');
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [medications, setMedications] = useState<Medication[]>([]);
   const [doseLogs, setDoseLogs] = useState<MedicationDoseLog[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+
+  // Date selection for daily medication schedule
+  const [selectedDate, setSelectedDate] = useState(new Date());
 
   // Modals
   const [medModalVisible, setMedModalVisible] = useState(false);
@@ -47,16 +59,28 @@ export default function CareScreen() {
   const [medStrength, setMedStrength] = useState('');
   const [medDosage, setMedDosage] = useState('');
   const [medRelation, setMedRelation] = useState<'after_meal' | 'before_meal' | 'with_meal' | 'no_relation'>('after_meal');
-  const [medTime, setMedTime] = useState('09:00:00');
+  const [medFrequency, setMedFrequency] = useState<'daily' | 'twice_daily' | 'three_times_daily' | 'as_needed' | 'weekly'>('daily');
+  const [medReminderTimes, setMedReminderTimes] = useState<string[]>(['08:00:00']);
   const [medClinician, setMedClinician] = useState('');
+  const [medReminderEnabled, setMedReminderEnabled] = useState(true);
 
   // New Appointment Form
   const [docName, setDocName] = useState('');
   const [specialty, setSpecialty] = useState('General Medicine / Gynecology');
-  const [aptDate, setAptDate] = useState('2026-10-30T10:00:00');
+  const [aptDate, setAptDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 7);
+    return d.toISOString().split('T')[0] + 'T10:00:00';
+  });
+  const [clinicName, setClinicName] = useState('');
   const [reason, setReason] = useState('');
   const [question1, setQuestion1] = useState('');
   const [question2, setQuestion2] = useState('');
+  const [aptReminderEnabled, setAptReminderEnabled] = useState(true);
+
+  const selectedDateStr = selectedDate.toISOString().split('T')[0];
+  const todayStr = new Date().toISOString().split('T')[0];
+  const isSelectedToday = selectedDateStr === todayStr;
 
   const loadCareData = async () => {
     try {
@@ -69,40 +93,6 @@ export default function CareScreen() {
       setMedications(meds);
       setDoseLogs(doses);
       setAppointments(apts);
-
-      if (meds.length === 0) {
-        await storage.addMedication({
-          name: 'Thyronorm',
-          strength: '25 mcg',
-          dosage_instructions: '1 tablet once daily in the morning',
-          schedule_type: 'daily',
-          reminder_times: ['08:00:00'],
-          relation_to_meals: 'before_meal',
-          prescribing_clinician: 'Dr. Sharma',
-          start_date: '2026-09-01',
-          is_active: true,
-        });
-        const updatedMeds = await storage.getMedications();
-        setMedications(updatedMeds);
-      }
-
-      if (apts.length === 0) {
-        await storage.addAppointment({
-          clinician_or_clinic_name: 'Dr. Sunita Rao',
-          specialty: 'Obstetrics & Gynecology',
-          appointment_at: '2026-11-05T10:30:00',
-          location_or_link: 'Apollo Clinic, Bangalore',
-          reason_for_visit: 'Routine wellness & PCOS follow-up',
-          questions_to_ask: [
-            'Should we repeat the thyroid panel?',
-            'Are my recurring headaches related to sleep patterns or hormones?',
-          ],
-          reminder_enabled: true,
-          status: 'scheduled',
-        });
-        const updatedApts = await storage.getAppointments();
-        setAppointments(updatedApts);
-      }
     } catch (e) {
       console.error('Error loading care data:', e);
     }
@@ -114,6 +104,22 @@ export default function CareScreen() {
     }, [])
   );
 
+  const handlePrevDay = () => {
+    const d = new Date(selectedDate);
+    d.setDate(d.getDate() - 1);
+    setSelectedDate(d);
+  };
+
+  const handleNextDay = () => {
+    const d = new Date(selectedDate);
+    d.setDate(d.getDate() + 1);
+    setSelectedDate(d);
+  };
+
+  const handleSelectToday = () => {
+    setSelectedDate(new Date());
+  };
+
   const handleSaveMedication = async () => {
     if (!medName.trim() || !medDosage.trim()) {
       Alert.alert('Required', 'Please enter medicine name and dosage instructions.');
@@ -124,26 +130,51 @@ export default function CareScreen() {
       name: medName.trim(),
       strength: medStrength.trim() || undefined,
       dosage_instructions: medDosage.trim(),
-      schedule_type: 'daily',
-      reminder_times: [medTime],
+      schedule_type: medFrequency,
+      reminder_times: medReminderTimes,
       relation_to_meals: medRelation,
       prescribing_clinician: medClinician.trim() || undefined,
-      start_date: new Date().toISOString().split('T')[0],
+      start_date: todayStr,
       is_active: true,
     });
 
-    await notificationService.scheduleMedicationReminder(
-      newMed.id,
-      newMed.name,
-      medTime,
-      true
-    );
+    if (medReminderEnabled && medReminderTimes.length > 0) {
+      for (const t of medReminderTimes) {
+        await notificationService.scheduleMedicationReminder(
+          newMed.id,
+          newMed.name,
+          t,
+          true
+        );
+      }
+    }
 
     setMedModalVisible(false);
     setMedName('');
     setMedStrength('');
     setMedDosage('');
+    setMedClinician('');
+    setMedReminderTimes(['08:00:00']);
     loadCareData();
+  };
+
+  const handleDeleteMedication = (id: string, name: string) => {
+    Alert.alert(
+      'Remove Medication',
+      `Are you sure you want to remove ${name}? This will also cancel its scheduled reminders.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            await storage.deleteMedication(id);
+            await notificationService.cancelNotification(id);
+            loadCareData();
+          },
+        },
+      ]
+    );
   };
 
   const handleSaveAppointment = async () => {
@@ -160,46 +191,107 @@ export default function CareScreen() {
       clinician_or_clinic_name: docName.trim(),
       specialty: specialty.trim() || undefined,
       appointment_at: aptDate,
+      location_or_link: clinicName.trim() || undefined,
       reason_for_visit: reason.trim() || undefined,
       questions_to_ask: questions,
-      reminder_enabled: true,
+      reminder_enabled: aptReminderEnabled,
       status: 'scheduled',
     });
 
-    await notificationService.scheduleAppointmentReminder(
-      newApt.id,
-      newApt.clinician_or_clinic_name,
-      new Date(newApt.appointment_at)
-    );
+    if (aptReminderEnabled) {
+      await notificationService.scheduleAppointmentReminder(
+        newApt.id,
+        newApt.clinician_or_clinic_name,
+        new Date(newApt.appointment_at)
+      );
+    }
 
     setAptModalVisible(false);
     setDocName('');
+    setClinicName('');
     setReason('');
     setQuestion1('');
     setQuestion2('');
     loadCareData();
   };
 
-  const handleRecordDose = async (medId: string, status: 'taken' | 'skipped' | 'missed') => {
-    const today = new Date().toISOString().split('T')[0];
-    await storage.logMedicationDose({
-      medication_id: medId,
-      scheduled_at: `${today}T09:00:00`,
-      logged_at: new Date().toISOString(),
-      status,
-    });
+  const handleDeleteAppointment = (id: string) => {
+    Alert.alert('Cancel Consultation', 'Remove this scheduled appointment from your calendar?', [
+      { text: 'Keep', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          await storage.deleteAppointment(id);
+          loadCareData();
+        },
+      },
+    ]);
+  };
+
+  // Record individual dose action for a specific scheduled time
+  const handleRecordDose = async (
+    medId: string,
+    timeStr: string,
+    status: 'taken' | 'skipped' | 'missed'
+  ) => {
+    const scheduledAt = `${selectedDateStr}T${timeStr.length === 5 ? timeStr + ':00' : timeStr}`;
+    await storage.recordDoseAction(medId, scheduledAt, status);
     loadCareData();
   };
 
-  const todayStr = new Date().toISOString().split('T')[0];
-  const todayDoses = doseLogs.filter((d) => d.scheduled_at.startsWith(todayStr));
+  // Selected date's dose logs
+  const selectedDateDoses = doseLogs.filter((d) => d.scheduled_at.startsWith(selectedDateStr));
 
+  // Compute daily schedule items grouped by time of day
+  interface ScheduleItem {
+    medication: Medication;
+    time: string;
+    scheduledAt: string;
+    log?: MedicationDoseLog;
+    timeGroup: 'morning' | 'afternoon' | 'evening' | 'night';
+  }
+
+  const activeMeds = medications.filter((m) => m.is_active);
+  const scheduleItems: ScheduleItem[] = [];
+
+  for (const med of activeMeds) {
+    const times = med.reminder_times.length > 0 ? med.reminder_times : ['08:00:00'];
+    for (const t of times) {
+      const scheduledAt = `${selectedDateStr}T${t.length === 5 ? t + ':00' : t}`;
+      const log = selectedDateDoses.find((d) => d.medication_id === med.id && d.scheduled_at === scheduledAt);
+
+      const hour = parseInt(t.split(':')[0], 10);
+      let timeGroup: ScheduleItem['timeGroup'] = 'morning';
+      if (hour >= 12 && hour < 17) timeGroup = 'afternoon';
+      else if (hour >= 17 && hour < 21) timeGroup = 'evening';
+      else if (hour >= 21 || hour < 5) timeGroup = 'night';
+
+      scheduleItems.push({
+        medication: med,
+        time: t,
+        scheduledAt,
+        log,
+        timeGroup,
+      });
+    }
+  }
+
+  // Sort schedule items chronologically
+  scheduleItems.sort((a, b) => a.time.localeCompare(b.time));
+
+  const totalDosesToday = scheduleItems.length;
+  const takenDosesToday = scheduleItems.filter((s) => s.log?.status === 'taken').length;
   const adherenceRate =
     doseLogs.length > 0
-      ? Math.round(
-          (doseLogs.filter((d) => d.status === 'taken').length / doseLogs.length) * 100
-        )
+      ? Math.round((doseLogs.filter((d) => d.status === 'taken').length / doseLogs.length) * 100)
       : 100;
+
+  const formattedHeaderDate = selectedDate.toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  });
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
@@ -210,209 +302,266 @@ export default function CareScreen() {
             <Sparkles size={11} color={Colors.deepBurgundy} />
             <Text style={styles.headerTagText}>Care & Prescriptions</Text>
           </View>
-          <Text style={styles.screenTitle}>Care & Appointments</Text>
+          <Text style={styles.screenTitle}>Care & Regimen</Text>
           <Text style={styles.screenSubtitle}>
-            Personalized medication routines, clinician visits, and question preparation
+            Personalized medication routines, dose adherence, and clinician visits
           </Text>
         </View>
 
-        {/* Emergency Assistance Quick Dial Bar */}
+        {/* Tab Switcher */}
+        <View style={styles.tabSwitcher}>
+          <TouchableOpacity
+            style={[styles.tabButton, activeTab === 'medications' && styles.tabButtonActive]}
+            onPress={() => setActiveTab('medications')}
+          >
+            <Pill size={15} color={activeTab === 'medications' ? Colors.deepBurgundy : Colors.mutedText} />
+            <Text style={[styles.tabButtonText, activeTab === 'medications' && styles.tabButtonTextActive]}>
+              Medication Schedule
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tabButton, activeTab === 'appointments' && styles.tabButtonActive]}
+            onPress={() => setActiveTab('appointments')}
+          >
+            <Calendar size={15} color={activeTab === 'appointments' ? Colors.deepBurgundy : Colors.mutedText} />
+            <Text style={[styles.tabButtonText, activeTab === 'appointments' && styles.tabButtonTextActive]}>
+              Consultations ({appointments.length})
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Emergency Assistance Quick Bar */}
         <Card style={styles.emergencyCard} variant="urgent">
           <View style={styles.emergencyRow}>
             <View style={{ flex: 1 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <AlertTriangle size={16} color={Colors.deepBurgundy} />
+                <AlertTriangle size={15} color={Colors.deepBurgundy} />
                 <Text style={styles.emergencyTitle}>Emergency Services</Text>
               </View>
               <Text style={styles.emergencySub}>
                 Helpline: 112 • Contact: {profile?.emergency_contact_phone || 'Family not set'}
               </Text>
             </View>
-            <TouchableOpacity
-              onPress={() => Linking.openURL('tel:112')}
-              style={styles.emergencyDialBtn}
-            >
-              <PhoneCall size={14} color={Colors.white} />
+            <TouchableOpacity onPress={() => Linking.openURL('tel:112')} style={styles.emergencyDialBtn}>
+              <PhoneCall size={13} color={Colors.white} />
               <Text style={styles.emergencyDialText}>112</Text>
             </TouchableOpacity>
           </View>
         </Card>
 
-        {/* Doctor Consultation Summary Shortcut */}
-        <Card style={styles.summaryCard} variant="rose">
-          <View style={styles.summaryHeader}>
-            <View style={{ flex: 1, paddingRight: 10 }}>
-              <Text style={styles.summaryCardTitle}>Doctor-Ready Consultation Summary</Text>
-              <Text style={styles.summaryCardSub}>
-                Organize your symptoms, lab results, and questions before meeting your clinician.
-              </Text>
-            </View>
-            <Button
-              title="Open Summary"
-              onPress={() => router.push('/consultation-summary')}
-              size="small"
-              variant="primary"
-            />
-          </View>
-        </Card>
-
-        {/* Active Prescriptions Header */}
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitle}>Prescriptions & Medicines</Text>
-          <TouchableOpacity onPress={() => setMedModalVisible(true)} style={styles.addBtnSmall}>
-            <Plus size={13} color={Colors.deepBurgundy} />
-            <Text style={styles.addBtnText}>Add Medicine</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Adherence Mini Stat */}
-        <View style={styles.adherenceBox}>
-          <Text style={styles.adherenceText}>
-            Recorded 30-Day Medication Adherence: <Text style={{ fontWeight: '800', color: Colors.deepBurgundy }}>{adherenceRate}%</Text>
-          </Text>
-        </View>
-
-        {medications.length > 0 ? (
-          medications.map((m) => {
-            const doseToday = todayDoses.find((d) => d.medication_id === m.id);
-
-            return (
-              <Card key={m.id} style={styles.medCard} variant="elevated">
-                <View style={styles.medHeader}>
-                  <View style={styles.medIconBox}>
-                    <Pill size={18} color={Colors.deepBurgundy} />
+        {activeTab === 'medications' ? (
+          <>
+            {/* Daily Date Navigator */}
+            <View style={styles.dateNavRow}>
+              <TouchableOpacity onPress={handlePrevDay} style={styles.dateNavBtn}>
+                <ChevronLeft size={18} color={Colors.deepBurgundy} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleSelectToday} style={styles.dateNavCenter}>
+                <Text style={styles.dateNavTitle}>{formattedHeaderDate}</Text>
+                {isSelectedToday ? (
+                  <View style={styles.todayBadge}>
+                    <Text style={styles.todayBadgeText}>Today</Text>
                   </View>
-                  <View style={{ flex: 1, marginLeft: 10 }}>
-                    <Text style={styles.medName}>
-                      {m.name} {m.strength ? `(${m.strength})` : ''}
-                    </Text>
-                    <Text style={styles.medInstructions}>{m.dosage_instructions}</Text>
-                    {m.relation_to_meals && (
-                      <Text style={styles.medRelation}>
-                        Timing: {m.relation_to_meals.replace('_', ' ')}
+                ) : (
+                  <Text style={styles.tapForTodayText}>Tap to return to Today</Text>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleNextDay} style={styles.dateNavBtn}>
+                <ChevronRight size={18} color={Colors.deepBurgundy} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Daily Adherence Progress */}
+            <Card style={styles.summaryCard} variant="rose">
+              <View style={styles.summaryHeader}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.summaryCardTitle}>
+                    {totalDosesToday > 0
+                      ? `${takenDosesToday} of ${totalDosesToday} doses completed`
+                      : 'No scheduled doses for this date'}
+                  </Text>
+                  <Text style={styles.summaryCardSub}>
+                    Overall recorded adherence: {adherenceRate}%
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={() => setMedModalVisible(true)} style={styles.addMedHeroBtn}>
+                  <Plus size={14} color={Colors.white} />
+                  <Text style={styles.addMedHeroText}>Add Medicine</Text>
+                </TouchableOpacity>
+              </View>
+            </Card>
+
+            {/* Daily Schedule List */}
+            {scheduleItems.length > 0 ? (
+              <View style={{ marginTop: 8 }}>
+                <Text style={styles.sectionHeaderTitle}>Scheduled Routine</Text>
+                {scheduleItems.map((item, idx) => {
+                  const m = item.medication;
+                  const isTaken = item.log?.status === 'taken';
+                  const isSkipped = item.log?.status === 'skipped';
+
+                  return (
+                    <Card key={`${m.id}-${item.time}-${idx}`} style={styles.scheduleCard} variant="elevated">
+                      <View style={styles.scheduleRow}>
+                        <View style={[styles.timeCircle, isTaken && styles.timeCircleTaken]}>
+                          <Clock size={14} color={isTaken ? Colors.white : Colors.deepBurgundy} />
+                          <Text style={[styles.timeText, isTaken && { color: Colors.white }]}>
+                            {item.time.substring(0, 5)}
+                          </Text>
+                        </View>
+
+                        <View style={{ flex: 1, marginLeft: 12 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <Text style={styles.medName}>
+                              {m.name} {m.strength ? `(${m.strength})` : ''}
+                            </Text>
+                            <TouchableOpacity
+                              onPress={() => handleDeleteMedication(m.id, m.name)}
+                              style={{ padding: 4 }}
+                            >
+                              <Trash2 size={14} color={Colors.mutedText} />
+                            </TouchableOpacity>
+                          </View>
+                          <Text style={styles.medInstructions}>{m.dosage_instructions}</Text>
+                          {m.relation_to_meals && (
+                            <Text style={styles.medRelation}>
+                              Timing: {m.relation_to_meals.replace(/_/g, ' ')}
+                            </Text>
+                          )}
+                        </View>
+                      </View>
+
+                      {/* Dose Action Buttons */}
+                      <View style={styles.doseActionRow}>
+                        <View style={styles.statusIndicatorRow}>
+                          <Text style={styles.doseStatusLabel}>Status: </Text>
+                          <Text
+                            style={[
+                              styles.doseStatusValue,
+                              isTaken && { color: Colors.deepBurgundy },
+                              isSkipped && { color: Colors.lavenderSlate },
+                            ]}
+                          >
+                            {isTaken ? 'Taken ✓' : isSkipped ? 'Skipped' : 'Pending'}
+                          </Text>
+                        </View>
+
+                        <View style={styles.doseButtonActions}>
+                          <TouchableOpacity
+                            onPress={() => handleRecordDose(m.id, item.time, isTaken ? 'missed' : 'taken')}
+                            style={[styles.actionBtn, isTaken ? styles.actionBtnActive : styles.actionBtnOutline]}
+                          >
+                            <Check size={14} color={isTaken ? Colors.white : Colors.deepBurgundy} />
+                            <Text style={[styles.actionBtnText, isTaken && { color: Colors.white }]}>
+                              {isTaken ? 'Taken' : 'Mark Taken'}
+                            </Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            onPress={() => handleRecordDose(m.id, item.time, 'skipped')}
+                            style={[styles.skipBtn, isSkipped && styles.skipBtnActive]}
+                          >
+                            <Text style={[styles.skipBtnText, isSkipped && { color: Colors.white }]}>
+                              {isSkipped ? 'Skipped' : 'Skip'}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    </Card>
+                  );
+                })}
+              </View>
+            ) : (
+              <FloralEmptyState
+                title="Your Medication Routine is Clear"
+                message="No prescription or daily supplement has been added yet. Add your medications to automate reminders and protect adherence."
+                actionLabel="Add Medication"
+                onActionPress={() => setMedModalVisible(true)}
+              />
+            )}
+          </>
+        ) : (
+          /* APPOINTMENTS TAB */
+          <View>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionTitle}>Consultations & Doctor Visits</Text>
+              <TouchableOpacity onPress={() => setAptModalVisible(true)} style={styles.addBtnSmall}>
+                <Plus size={13} color={Colors.deepBurgundy} />
+                <Text style={styles.addBtnText}>New Visit</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Doctor Summary Generator Card */}
+            <Card style={styles.consultationPrepCard} variant="rose">
+              <View style={{ flex: 1, paddingRight: 8 }}>
+                <Text style={styles.consultationPrepTitle}>Doctor-Ready Summary</Text>
+                <Text style={styles.consultationPrepSub}>
+                  Consolidate your symptoms, vitals, and questions into a clear briefing before your visit.
+                </Text>
+              </View>
+              <Button
+                title="Prepare Summary"
+                size="small"
+                onPress={() => router.push('/consultation-summary')}
+              />
+            </Card>
+
+            {appointments.length > 0 ? (
+              appointments.map((apt) => (
+                <Card key={apt.id} style={styles.appointmentCard} variant="elevated">
+                  <View style={styles.aptHeader}>
+                    <View style={styles.aptIconCircle}>
+                      <Stethoscope size={18} color={Colors.deepBurgundy} />
+                    </View>
+                    <View style={{ flex: 1, marginLeft: 10 }}>
+                      <Text style={styles.doctorName}>{apt.clinician_or_clinic_name}</Text>
+                      <Text style={styles.specialtyText}>{apt.specialty || 'Healthcare Provider'}</Text>
+                    </View>
+                    <TouchableOpacity onPress={() => handleDeleteAppointment(apt.id)} style={{ padding: 4 }}>
+                      <Trash2 size={16} color={Colors.deepBurgundy} />
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.aptDetailsBox}>
+                    <View style={styles.aptDetailRow}>
+                      <Calendar size={13} color={Colors.mutedText} />
+                      <Text style={styles.aptDetailText}>
+                        {new Date(apt.appointment_at).toLocaleString('en-US', {
+                          weekday: 'short',
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
                       </Text>
+                    </View>
+                    {apt.reason_for_visit && (
+                      <View style={[styles.aptDetailRow, { marginTop: 4 }]}>
+                        <Sparkles size={13} color={Colors.mutedText} />
+                        <Text style={styles.aptDetailText}>Reason: {apt.reason_for_visit}</Text>
+                      </View>
                     )}
                   </View>
-                  <View style={styles.timeTag}>
-                    <Clock size={11} color={Colors.mutedText} style={{ marginRight: 4 }} />
-                    <Text style={styles.timeTagText}>
-                      {m.reminder_times[0]?.substring(0, 5) || '09:00'}
-                    </Text>
-                  </View>
-                </View>
 
-                {/* Today's Dose Status & Action */}
-                <View style={styles.doseActionRow}>
-                  <Text style={styles.doseActionPrompt}>
-                    Today's status:{' '}
-                    <Text style={{ fontWeight: '700', color: Colors.lavenderSlate, textTransform: 'capitalize' }}>
-                      {doseToday ? doseToday.status : 'Pending'}
-                    </Text>
-                  </Text>
-
-                  <View style={styles.doseBtnGroup}>
-                    <TouchableOpacity
-                      onPress={() => handleRecordDose(m.id, 'taken')}
-                      style={[styles.doseBtn, doseToday?.status === 'taken' && styles.doseBtnActive]}
-                    >
-                      <Check size={13} color={doseToday?.status === 'taken' ? Colors.white : Colors.lavenderSlate} />
-                      <Text style={[styles.doseBtnText, doseToday?.status === 'taken' && styles.doseBtnTextActive]}>
-                        Taken
-                      </Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      onPress={() => handleRecordDose(m.id, 'skipped')}
-                      style={[styles.doseBtn, doseToday?.status === 'skipped' && styles.doseBtnActiveSecondary]}
-                    >
-                      <Text style={[styles.doseBtnText, doseToday?.status === 'skipped' && styles.doseBtnTextActiveSecondary]}>
-                        Skip
-                      </Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      onPress={() => handleRecordDose(m.id, 'missed')}
-                      style={[styles.doseBtn, doseToday?.status === 'missed' && styles.doseBtnActiveMuted]}
-                    >
-                      <Text style={[styles.doseBtnText, doseToday?.status === 'missed' && styles.doseBtnTextActiveMuted]}>
-                        Missed
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </Card>
-            );
-          })
-        ) : (
-          <FloralEmptyState
-            title="No Medications Scheduled"
-            message="Add your daily vitamins, supplements, or prescriptions to receive gentle reminders and track adherence."
-            actionLabel="Add Medication"
-            onActionPress={() => setMedModalVisible(true)}
-          />
-        )}
-
-        {/* Appointments Section */}
-        <View style={[styles.sectionHeaderRow, { marginTop: 20 }]}>
-          <Text style={styles.sectionTitle}>Consultations & Follow-ups</Text>
-          <TouchableOpacity onPress={() => setAptModalVisible(true)} style={styles.addBtnSmall}>
-            <Plus size={13} color={Colors.deepBurgundy} />
-            <Text style={styles.addBtnText}>Add Visit</Text>
-          </TouchableOpacity>
-        </View>
-
-        {appointments.length > 0 ? (
-          appointments.map((apt) => {
-            const aptDateObj = new Date(apt.appointment_at);
-            const formattedDateStr = aptDateObj.toLocaleString('en-US', {
-              weekday: 'short',
-              month: 'short',
-              day: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit',
-            });
-
-            return (
-              <Card key={apt.id} style={styles.aptCard} variant="lavender">
-                <View style={styles.aptHeader}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.docName}>{apt.clinician_or_clinic_name}</Text>
-                    <Text style={styles.docSpecialty}>{apt.specialty}</Text>
-                  </View>
-                  <View style={styles.aptStatusBadge}>
-                    <Text style={styles.aptStatusText}>{apt.status}</Text>
-                  </View>
-                </View>
-
-                <View style={styles.aptDateRow}>
-                  <Calendar size={13} color={Colors.deepBurgundy} style={{ marginRight: 6 }} />
-                  <Text style={styles.aptDateText}>{formattedDateStr}</Text>
-                </View>
-
-                {apt.location_or_link && (
-                  <Text style={styles.aptLocation}>{apt.location_or_link}</Text>
-                )}
-
-                {apt.questions_to_ask && apt.questions_to_ask.length > 0 && (
-                  <View style={styles.questionsBox}>
-                    <Text style={styles.questionsTitle}>Prepared Questions for Doctor:</Text>
-                    {apt.questions_to_ask.map((q, idx) => (
-                      <Text key={idx} style={styles.questionItem}>
-                        • {q}
-                      </Text>
-                    ))}
-                  </View>
-                )}
-              </Card>
-            );
-          })
-        ) : (
-          <FloralEmptyState
-            title="No Upcoming Consultations"
-            message="Schedule upcoming visits with your doctor or gynecologist and prepare your clinical questions in advance."
-            actionLabel="Schedule Appointment"
-            onActionPress={() => setAptModalVisible(true)}
-          />
+                  {apt.questions_to_ask && apt.questions_to_ask.length > 0 && (
+                    <View style={styles.questionsContainer}>
+                      <Text style={styles.questionsTitle}>Questions for Clinician:</Text>
+                      {apt.questions_to_ask.map((q, qIdx) => (
+                        <Text key={qIdx} style={styles.questionItem}>• {q}</Text>
+                      ))}
+                    </View>
+                  )}
+                </Card>
+              ))
+            ) : (
+              <FloralEmptyState
+                title="No Consultations Scheduled"
+                message="Keep track of your gynecologist, endocrinologist, or GP visits and prepare questions in advance."
+                actionLabel="Schedule Consultation"
+                onActionPress={() => setAptModalVisible(true)}
+              />
+            )}
+          </View>
         )}
       </ScrollView>
 
@@ -420,87 +569,108 @@ export default function CareScreen() {
       <Modal visible={medModalVisible} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalSheet}>
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <Text style={styles.modalTitle}>Add Medication Routine</Text>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Add Medication</Text>
+              <TouchableOpacity onPress={() => setMedModalVisible(false)} style={styles.modalCloseBtn}>
+                <X size={20} color={Colors.mutedText} />
+              </TouchableOpacity>
+            </View>
 
-              <Text style={styles.modalLabel}>Medicine Name *</Text>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Text style={styles.modalLabel}>Medication Name *</Text>
               <TextInput
                 style={styles.modalInput}
-                placeholder="e.g. Thyronorm, Metformin, Vitamin D"
+                placeholder="e.g. Thyronorm, Metformin, Multivitamin"
                 placeholderTextColor={Colors.mutedText}
                 value={medName}
                 onChangeText={setMedName}
               />
 
-              <Text style={styles.modalLabel}>Strength / Dosage</Text>
-              <TextInput
-                style={styles.modalInput}
-                placeholder="e.g. 25 mcg, 500 mg"
-                placeholderTextColor={Colors.mutedText}
-                value={medStrength}
-                onChangeText={setMedStrength}
-              />
+              <View style={styles.row}>
+                <View style={{ flex: 1, marginRight: 8 }}>
+                  <Text style={styles.modalLabel}>Strength / Dose</Text>
+                  <TextInput
+                    style={styles.modalInput}
+                    placeholder="e.g. 500 mg, 25 mcg"
+                    placeholderTextColor={Colors.mutedText}
+                    value={medStrength}
+                    onChangeText={setMedStrength}
+                  />
+                </View>
+                <View style={{ flex: 1, marginLeft: 8 }}>
+                  <Text style={styles.modalLabel}>Relation to Meals</Text>
+                  <View style={styles.mealChipsRow}>
+                    {(['before_meal', 'after_meal', 'no_relation'] as const).map((r) => (
+                      <TouchableOpacity
+                        key={r}
+                        onPress={() => setMedRelation(r)}
+                        style={[styles.miniChip, medRelation === r && styles.miniChipActive]}
+                      >
+                        <Text style={[styles.miniChipText, medRelation === r && styles.miniChipTextActive]}>
+                          {r.replace('_', ' ')}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              </View>
 
-              <Text style={styles.modalLabel}>Instructions *</Text>
+              <Text style={styles.modalLabel}>Dosage Instructions *</Text>
               <TextInput
                 style={styles.modalInput}
-                placeholder="e.g. 1 tablet once daily in the morning"
+                placeholder="e.g. 1 tablet in the morning"
                 placeholderTextColor={Colors.mutedText}
                 value={medDosage}
                 onChangeText={setMedDosage}
               />
 
-              <Text style={styles.modalLabel}>Relation to Meals</Text>
-              <View style={styles.relationRow}>
+              <Text style={styles.modalLabel}>Frequency</Text>
+              <View style={styles.optionsWrap}>
                 {[
-                  { key: 'before_meal', label: 'Before Meal' },
-                  { key: 'after_meal', label: 'After Meal' },
-                  { key: 'with_meal', label: 'With Meal' },
-                  { key: 'no_relation', label: 'Anytime' },
-                ].map((rel) => (
+                  { key: 'daily', label: 'Once Daily', times: ['08:00:00'] },
+                  { key: 'twice_daily', label: 'Twice Daily', times: ['08:00:00', '20:00:00'] },
+                  { key: 'three_times_daily', label: '3x Daily', times: ['08:00:00', '14:00:00', '20:00:00'] },
+                  { key: 'as_needed', label: 'As Needed (SOS)', times: ['08:00:00'] },
+                ].map((f) => (
                   <TouchableOpacity
-                    key={rel.key}
-                    onPress={() => setMedRelation(rel.key as any)}
-                    style={[styles.relationBtn, medRelation === rel.key && styles.relationBtnActive]}
+                    key={f.key}
+                    onPress={() => {
+                      setMedFrequency(f.key as any);
+                      setMedReminderTimes(f.times);
+                    }}
+                    style={[styles.freqChip, medFrequency === f.key && styles.freqChipActive]}
                   >
-                    <Text style={[styles.relationText, medRelation === rel.key && styles.relationTextActive]}>
-                      {rel.label}
+                    <Text style={[styles.freqChipText, medFrequency === f.key && styles.freqChipTextActive]}>
+                      {f.label}
                     </Text>
                   </TouchableOpacity>
                 ))}
               </View>
 
-              <Text style={styles.modalLabel}>Reminder Time</Text>
-              <TextInput
-                style={styles.modalInput}
-                placeholder="e.g. 09:00:00"
-                placeholderTextColor={Colors.mutedText}
-                value={medTime}
-                onChangeText={setMedTime}
-              />
+              <Text style={styles.modalLabel}>Reminder Times</Text>
+              <View style={styles.timesListRow}>
+                {medReminderTimes.map((t, tIdx) => (
+                  <View key={tIdx} style={styles.timeBadge}>
+                    <Clock size={12} color={Colors.deepBurgundy} />
+                    <Text style={styles.timeBadgeText}>{t.substring(0, 5)}</Text>
+                  </View>
+                ))}
+              </View>
 
-              <Text style={styles.modalLabel}>Prescribing Doctor (Optional)</Text>
+              <Text style={styles.modalLabel}>Prescribing Clinician (Optional)</Text>
               <TextInput
                 style={styles.modalInput}
-                placeholder="e.g. Dr. Sunita Rao"
+                placeholder="e.g. Dr. Sharma"
                 placeholderTextColor={Colors.mutedText}
                 value={medClinician}
                 onChangeText={setMedClinician}
               />
 
-              <View style={styles.modalBtnRow}>
-                <Button
-                  title="Cancel"
-                  variant="outline"
-                  onPress={() => setMedModalVisible(false)}
-                  style={{ flex: 1, marginRight: 8 }}
-                />
-                <Button
-                  title="Save Routine"
-                  onPress={handleSaveMedication}
-                  style={{ flex: 1, marginLeft: 8 }}
-                />
-              </View>
+              <Button
+                title="Save Medication"
+                onPress={handleSaveMedication}
+                style={{ marginTop: 14, marginBottom: 20 }}
+              />
             </ScrollView>
           </View>
         </View>
@@ -510,13 +680,18 @@ export default function CareScreen() {
       <Modal visible={aptModalVisible} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalSheet}>
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Schedule Consultation</Text>
+              <TouchableOpacity onPress={() => setAptModalVisible(false)} style={styles.modalCloseBtn}>
+                <X size={20} color={Colors.mutedText} />
+              </TouchableOpacity>
+            </View>
 
-              <Text style={styles.modalLabel}>Clinician or Clinic Name *</Text>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Text style={styles.modalLabel}>Clinician / Clinic Name *</Text>
               <TextInput
                 style={styles.modalInput}
-                placeholder="e.g. Dr. Sunita Rao (Apollo Clinic)"
+                placeholder="e.g. Dr. Sunita Rao"
                 placeholderTextColor={Colors.mutedText}
                 value={docName}
                 onChangeText={setDocName}
@@ -525,59 +700,62 @@ export default function CareScreen() {
               <Text style={styles.modalLabel}>Specialty</Text>
               <TextInput
                 style={styles.modalInput}
-                placeholder="e.g. Gynecology, Endocrinology"
+                placeholder="e.g. Obstetrics & Gynecology, Endocrinology"
                 placeholderTextColor={Colors.mutedText}
                 value={specialty}
                 onChangeText={setSpecialty}
               />
 
-              <Text style={styles.modalLabel}>Date & Time (ISO format)</Text>
+              <Text style={styles.modalLabel}>Date & Time (YYYY-MM-DDTHH:MM)</Text>
               <TextInput
                 style={styles.modalInput}
-                placeholder="YYYY-MM-DDTHH:MM:SS"
+                placeholder="e.g. 2026-11-10T10:30:00"
                 placeholderTextColor={Colors.mutedText}
                 value={aptDate}
                 onChangeText={setAptDate}
               />
 
-              <Text style={styles.modalLabel}>Primary Reason for Visit</Text>
+              <Text style={styles.modalLabel}>Location / Clinic Name</Text>
               <TextInput
                 style={styles.modalInput}
-                placeholder="e.g. Routine 6-month checkup, PCOS review"
+                placeholder="e.g. Apollo Clinic, Bangalore"
+                placeholderTextColor={Colors.mutedText}
+                value={clinicName}
+                onChangeText={setClinicName}
+              />
+
+              <Text style={styles.modalLabel}>Reason for Visit</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="e.g. Routine checkup, PCOS symptom review"
                 placeholderTextColor={Colors.mutedText}
                 value={reason}
                 onChangeText={setReason}
               />
 
-              <Text style={styles.modalLabel}>Questions to Ask Clinician</Text>
+              <Text style={styles.modalLabel}>Question to ask doctor #1</Text>
               <TextInput
                 style={styles.modalInput}
-                placeholder="Question 1 (e.g. Should I recheck ferritin?)"
+                placeholder="e.g. Should we check hormone panel?"
                 placeholderTextColor={Colors.mutedText}
                 value={question1}
                 onChangeText={setQuestion1}
               />
+
+              <Text style={styles.modalLabel}>Question to ask doctor #2</Text>
               <TextInput
                 style={styles.modalInput}
-                placeholder="Question 2 (e.g. Recommended diet changes?)"
+                placeholder="e.g. Are my cramps within expected baseline?"
                 placeholderTextColor={Colors.mutedText}
                 value={question2}
                 onChangeText={setQuestion2}
               />
 
-              <View style={styles.modalBtnRow}>
-                <Button
-                  title="Cancel"
-                  variant="outline"
-                  onPress={() => setAptModalVisible(false)}
-                  style={{ flex: 1, marginRight: 8 }}
-                />
-                <Button
-                  title="Save Visit"
-                  onPress={handleSaveAppointment}
-                  style={{ flex: 1, marginLeft: 8 }}
-                />
-              </View>
+              <Button
+                title="Save Consultation"
+                onPress={handleSaveAppointment}
+                style={{ marginTop: 14, marginBottom: 20 }}
+              />
             </ScrollView>
           </View>
         </View>
@@ -596,7 +774,7 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   screenHeader: {
-    marginBottom: 14,
+    marginBottom: 12,
   },
   headerTag: {
     flexDirection: 'row',
@@ -628,9 +806,48 @@ const styles = StyleSheet.create({
     fontFamily: Typography.body,
     marginTop: 2,
   },
+  tabSwitcher: {
+    flexDirection: 'row',
+    backgroundColor: Colors.paleRoseWhite,
+    borderRadius: 18,
+    padding: 4,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: Colors.fineBorder,
+  },
+  tabButton: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: 6,
+    paddingVertical: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 14,
+  },
+  tabButtonActive: {
+    backgroundColor: Colors.white,
+    shadowColor: Colors.lavenderSlate,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  tabButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.mutedText,
+  },
+  tabButtonTextActive: {
+    color: Colors.deepBurgundy,
+    fontWeight: '700',
+  },
   emergencyCard: {
     padding: 12,
-    marginVertical: 6,
+    borderRadius: 16,
+    marginBottom: 12,
+    backgroundColor: Colors.paleRoseWhite,
+    borderWidth: 1,
+    borderColor: 'rgba(219, 161, 165, 0.4)',
   },
   emergencyRow: {
     flexDirection: 'row',
@@ -641,53 +858,219 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: Colors.deepBurgundy,
-    fontFamily: Typography.heading,
   },
   emergencySub: {
     fontSize: 11,
-    color: Colors.lavenderSlate,
-    marginTop: 2,
+    color: Colors.mutedText,
+    marginTop: 1,
   },
   emergencyDialBtn: {
-    backgroundColor: Colors.deepBurgundy,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingVertical: 7,
+    backgroundColor: Colors.deepBurgundy,
+    paddingVertical: 6,
     paddingHorizontal: 12,
-    borderRadius: 16,
+    borderRadius: 12,
   },
   emergencyDialText: {
     color: Colors.white,
     fontWeight: '700',
     fontSize: 12,
   },
+  dateNavRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.softWhite,
+    borderRadius: 16,
+    padding: 8,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: Colors.fineBorder,
+  },
+  dateNavBtn: {
+    padding: 8,
+    borderRadius: 10,
+    backgroundColor: Colors.softLavenderMist,
+  },
+  dateNavCenter: {
+    alignItems: 'center',
+  },
+  dateNavTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.lavenderSlate,
+    fontFamily: Typography.heading,
+  },
+  todayBadge: {
+    backgroundColor: Colors.paleRoseWhite,
+    paddingVertical: 1,
+    paddingHorizontal: 6,
+    borderRadius: 8,
+    marginTop: 2,
+  },
+  todayBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: Colors.deepBurgundy,
+  },
+  tapForTodayText: {
+    fontSize: 10,
+    color: Colors.deepBurgundy,
+    marginTop: 2,
+  },
   summaryCard: {
-    padding: 16,
-    marginVertical: 8,
+    padding: 14,
+    borderRadius: 16,
+    marginBottom: 14,
   },
   summaryHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
   },
   summaryCardTitle: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
     color: Colors.deepBurgundy,
-    fontFamily: Typography.heading,
-    marginBottom: 3,
   },
   summaryCardSub: {
+    fontSize: 11,
+    color: Colors.mutedText,
+    marginTop: 2,
+  },
+  addMedHeroBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.deepBurgundy,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+  },
+  addMedHeroText: {
+    color: Colors.white,
+    fontWeight: '600',
+    fontSize: 12,
+  },
+  sectionHeaderTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: Colors.lavenderSlate,
+    marginBottom: 10,
+    fontFamily: Typography.heading,
+  },
+  scheduleCard: {
+    padding: 14,
+    borderRadius: 16,
+    marginBottom: 10,
+    backgroundColor: Colors.softWhite,
+  },
+  scheduleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  timeCircle: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: Colors.paleRoseWhite,
+    borderWidth: 1,
+    borderColor: 'rgba(219, 161, 165, 0.4)',
+  },
+  timeCircleTaken: {
+    backgroundColor: Colors.deepBurgundy,
+  },
+  timeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.deepBurgundy,
+    marginTop: 2,
+  },
+  medName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: Colors.lavenderSlate,
+  },
+  medInstructions: {
+    fontSize: 12,
+    color: Colors.mutedText,
+    marginTop: 2,
+  },
+  medRelation: {
+    fontSize: 11,
+    color: Colors.deepBurgundy,
+    marginTop: 2,
+    textTransform: 'capitalize',
+  },
+  doseActionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: Colors.softLavenderMist,
+  },
+  statusIndicatorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  doseStatusLabel: {
+    fontSize: 12,
+    color: Colors.mutedText,
+  },
+  doseStatusValue: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.mutedText,
+  },
+  doseButtonActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  actionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+  },
+  actionBtnOutline: {
+    backgroundColor: Colors.softLavenderMist,
+    borderWidth: 1,
+    borderColor: Colors.fineBorder,
+  },
+  actionBtnActive: {
+    backgroundColor: Colors.deepBurgundy,
+  },
+  actionBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.deepBurgundy,
+  },
+  skipBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    backgroundColor: Colors.softLavenderMist,
+  },
+  skipBtnActive: {
+    backgroundColor: Colors.lavenderSlate,
+  },
+  skipBtnText: {
     fontSize: 12,
     color: Colors.lavenderSlate,
-    lineHeight: 17,
+    fontWeight: '500',
   },
   sectionHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 18,
     marginBottom: 10,
   },
   sectionTitle: {
@@ -700,275 +1083,211 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: Colors.paleRoseWhite,
     paddingVertical: 5,
     paddingHorizontal: 10,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(219, 161, 165, 0.4)',
+    borderRadius: 10,
+    backgroundColor: Colors.paleRoseWhite,
   },
   addBtnText: {
     fontSize: 12,
-    fontWeight: '700',
-    color: Colors.deepBurgundy,
-  },
-  adherenceBox: {
-    backgroundColor: Colors.white,
-    padding: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: Colors.fineBorder,
-    marginBottom: 10,
-  },
-  adherenceText: {
-    fontSize: 12,
-    color: Colors.mutedText,
-  },
-  medCard: {
-    padding: 16,
-    marginBottom: 10,
-  },
-  medHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 12,
-  },
-  medIconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: Colors.paleRoseWhite,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(219, 161, 165, 0.4)',
-  },
-  medName: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: Colors.lavenderSlate,
-    fontFamily: Typography.heading,
-  },
-  medInstructions: {
-    fontSize: 12,
-    color: Colors.mutedText,
-    marginTop: 2,
-  },
-  medRelation: {
-    fontSize: 11,
-    color: Colors.deepBurgundy,
-    marginTop: 2,
-    fontStyle: 'italic',
-  },
-  timeTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.paleRoseWhite,
-    paddingVertical: 3,
-    paddingHorizontal: 8,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: Colors.fineBorder,
-  },
-  timeTagText: {
-    fontSize: 11,
     fontWeight: '600',
-    color: Colors.lavenderSlate,
+    color: Colors.deepBurgundy,
   },
-  doseActionRow: {
+  consultationPrepCard: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: Colors.fineBorder,
+    padding: 14,
+    borderRadius: 16,
+    marginBottom: 14,
   },
-  doseActionPrompt: {
-    fontSize: 12,
-    color: Colors.mutedText,
+  consultationPrepTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.deepBurgundy,
   },
-  doseBtnGroup: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  doseBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: Colors.paleRoseWhite,
-    paddingVertical: 5,
-    paddingHorizontal: 10,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.fineBorder,
-  },
-  doseBtnActive: {
-    backgroundColor: Colors.deepBurgundy,
-    borderColor: Colors.deepBurgundy,
-  },
-  doseBtnActiveSecondary: {
-    backgroundColor: Colors.softLavender,
-    borderColor: Colors.blossomRose,
-  },
-  doseBtnActiveMuted: {
-    backgroundColor: Colors.paleRoseWhite,
-    borderColor: Colors.deepBurgundy,
-  },
-  doseBtnText: {
+  consultationPrepSub: {
     fontSize: 11,
-    fontWeight: '600',
-    color: Colors.lavenderSlate,
+    color: Colors.mutedText,
+    marginTop: 2,
   },
-  doseBtnTextActive: {
-    color: Colors.white,
-    fontWeight: '700',
-  },
-  doseBtnTextActiveSecondary: {
-    color: Colors.deepBurgundy,
-    fontWeight: '700',
-  },
-  doseBtnTextActiveMuted: {
-    color: Colors.deepBurgundy,
-    fontWeight: '700',
-  },
-  aptCard: {
-    padding: 16,
-    marginBottom: 10,
-    borderLeftWidth: 4,
-    borderLeftColor: Colors.deepBurgundy,
+  appointmentCard: {
+    padding: 14,
+    borderRadius: 16,
+    marginBottom: 12,
+    backgroundColor: Colors.softWhite,
   },
   aptHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 8,
+    alignItems: 'center',
   },
-  docName: {
+  aptIconCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: Colors.paleRoseWhite,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  doctorName: {
     fontSize: 15,
     fontWeight: '700',
     color: Colors.lavenderSlate,
-    fontFamily: Typography.heading,
   },
-  docSpecialty: {
+  specialtyText: {
     fontSize: 12,
     color: Colors.mutedText,
-    marginTop: 2,
+    marginTop: 1,
   },
-  aptStatusBadge: {
-    backgroundColor: Colors.white,
-    paddingVertical: 3,
-    paddingHorizontal: 8,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: Colors.fineBorder,
+  aptDetailsBox: {
+    marginTop: 10,
+    padding: 10,
+    backgroundColor: Colors.softLavenderMist,
+    borderRadius: 12,
   },
-  aptStatusText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: Colors.deepBurgundy,
-    textTransform: 'uppercase',
-  },
-  aptDateRow: {
+  aptDetailRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 4,
+    gap: 6,
   },
-  aptDateText: {
+  aptDetailText: {
     fontSize: 12,
-    fontWeight: '600',
-    color: Colors.deepBurgundy,
+    color: Colors.lavenderSlate,
+    fontWeight: '500',
   },
-  aptLocation: {
-    fontSize: 11,
-    color: Colors.mutedText,
-    marginBottom: 8,
-  },
-  questionsBox: {
-    backgroundColor: Colors.white,
-    padding: 10,
-    borderRadius: 10,
-    marginTop: 8,
-    borderWidth: 1,
-    borderColor: Colors.fineBorder,
+  questionsContainer: {
+    marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: Colors.softLavenderMist,
   },
   questionsTitle: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     color: Colors.deepBurgundy,
     marginBottom: 4,
   },
   questionItem: {
-    fontSize: 11,
+    fontSize: 12,
     color: Colors.lavenderSlate,
-    lineHeight: 16,
+    lineHeight: 18,
   },
-
-  // Modals
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(84, 87, 116, 0.45)',
+    backgroundColor: 'rgba(23, 43, 58, 0.55)',
     justifyContent: 'flex-end',
   },
   modalSheet: {
-    backgroundColor: Colors.white,
-    borderTopLeftRadius: 26,
-    borderTopRightRadius: 26,
-    padding: 22,
-    maxHeight: '88%',
+    backgroundColor: Colors.softWhite,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    maxHeight: '85%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
   },
   modalTitle: {
     fontSize: 18,
     fontWeight: '700',
     color: Colors.lavenderSlate,
     fontFamily: Typography.heading,
-    marginBottom: 12,
+  },
+  modalCloseBtn: {
+    padding: 4,
   },
   modalLabel: {
-    fontSize: 12,
-    fontWeight: '700',
+    fontSize: 13,
+    fontWeight: '600',
     color: Colors.lavenderSlate,
     marginBottom: 6,
     marginTop: 8,
   },
   modalInput: {
-    backgroundColor: Colors.paleRoseWhite,
-    borderRadius: 12,
-    padding: 12,
+    backgroundColor: Colors.softLavenderMist,
     borderWidth: 1,
     borderColor: Colors.fineBorder,
-    fontSize: 13,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 14,
     color: Colors.lavenderSlate,
     marginBottom: 8,
   },
-  relationRow: {
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  mealChipsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
-    marginBottom: 8,
+    gap: 4,
   },
-  relationBtn: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 14,
-    backgroundColor: Colors.paleRoseWhite,
-    borderWidth: 1,
-    borderColor: Colors.fineBorder,
+  miniChip: {
+    paddingVertical: 5,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    backgroundColor: Colors.softLavenderMist,
   },
-  relationBtnActive: {
+  miniChipActive: {
     backgroundColor: Colors.deepBurgundy,
-    borderColor: Colors.deepBurgundy,
   },
-  relationText: {
-    fontSize: 11,
-    color: Colors.mutedText,
+  miniChipText: {
+    fontSize: 10,
+    color: Colors.lavenderSlate,
+    textTransform: 'capitalize',
   },
-  relationTextActive: {
+  miniChipTextActive: {
     color: Colors.white,
     fontWeight: '700',
   },
-  modalBtnRow: {
+  optionsWrap: {
     flexDirection: 'row',
-    marginTop: 16,
-    marginBottom: 20,
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 8,
+  },
+  freqChip: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: Colors.softLavenderMist,
+    borderWidth: 1,
+    borderColor: Colors.fineBorder,
+  },
+  freqChipActive: {
+    backgroundColor: Colors.deepBurgundy,
+    borderColor: Colors.deepBurgundy,
+  },
+  freqChipText: {
+    fontSize: 11,
+    color: Colors.lavenderSlate,
+    fontWeight: '500',
+  },
+  freqChipTextActive: {
+    color: Colors.white,
+    fontWeight: '600',
+  },
+  timesListRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 8,
+  },
+  timeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.paleRoseWhite,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+  },
+  timeBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: Colors.deepBurgundy,
   },
 });
