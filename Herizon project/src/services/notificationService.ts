@@ -165,14 +165,14 @@
  */
 
 import { Platform } from 'react-native';
+import { applyExpoGoShims } from '../utils/expoGoShims';
 
 type NotificationsModule = typeof import('expo-notifications');
 
 /**
- * expo-notifications is loaded lazily. On Android, importing it at the top of a file
- * throws in Expo Go ("Cannot find native module 'ExpoTopicSubscriptionModule'"), and
- * Expo Router loads every route at startup, so a top-level import crashes the whole app.
- * Here a failed load simply disables reminders (they work in a development build).
+ * expo-notifications is loaded lazily. On Android in Expo Go, ExpoTopicSubscriptionModule
+ * is not bundled, so we apply our Expo Go shims before requiring it to prevent
+ * unhandled native module errors.
  */
 let cached: NotificationsModule | null | undefined;
 let handlerSet = false;
@@ -180,6 +180,7 @@ let handlerSet = false;
 function getNotifications(): NotificationsModule | null {
   if (cached !== undefined) return cached;
   try {
+    applyExpoGoShims();
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     cached = require('expo-notifications') as NotificationsModule;
   } catch (e) {
@@ -227,12 +228,16 @@ export class NotificationService {
       }
 
       if (Platform.OS === 'android') {
-        await Notifications.setNotificationChannelAsync('herhealth-reminders', {
-          name: 'Health & Medication Reminders',
-          importance: Notifications.AndroidImportance.HIGH,
-          vibrationPattern: [0, 250, 250, 250],
-          lightColor: '#237F78',
-        });
+        try {
+          await Notifications.setNotificationChannelAsync('herhealth-reminders', {
+            name: 'Health & Medication Reminders',
+            importance: Notifications.AndroidImportance.HIGH,
+            vibrationPattern: [0, 250, 250, 250],
+            lightColor: '#237F78',
+          });
+        } catch (channelErr) {
+          console.warn('Failed to set notification channel:', channelErr);
+        }
       }
 
       return true;

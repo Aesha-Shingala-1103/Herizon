@@ -1,3 +1,4 @@
+import '../src/utils/expoGoShims';
 import React, { useState, useEffect } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { useFonts } from 'expo-font';
