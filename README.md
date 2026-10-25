@@ -429,7 +429,7 @@ Configure the `preview` profile in `eas.json` to output an `.apk`. Native permis
 | Tithi Jasoliya |
 
 
-**Team name:** Herizon · **College / Institution:** Sardar Vallabhbhai Institute of Technology, Surat
+**Team name:** Herizon ·    **College / Institution:** Sardar Vallabhbhai Institute of Technology, Surat
 
 ---
 
