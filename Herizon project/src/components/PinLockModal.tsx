@@ -12,6 +12,7 @@ import AppLogo from './AppLogo';
 import Colors from '../theme/colors';
 import Typography from '../theme/typography';
 import { securityService } from '../services/securityService';
+import { storage } from '../services/storageService';
 
 interface PinLockModalProps {
   visible: boolean;
@@ -43,10 +44,14 @@ export const PinLockModal: React.FC<PinLockModalProps> = ({
   useEffect(() => {
     let active = true;
     if (visible) {
-      securityService.isBiometricsAvailable().then((available) => {
+      Promise.all([
+        securityService.isBiometricsAvailable(),
+        storage.getPreferences(),
+      ]).then(([available, prefs]) => {
         if (!active) return;
         setBiometricsAvailable(available);
-        if (available) {
+        // Only auto-trigger if available AND biometrics preference is not explicitly disabled
+        if (available && prefs?.biometrics_enabled !== false) {
           handleBiometricAuth();
         }
       }).catch(() => {});

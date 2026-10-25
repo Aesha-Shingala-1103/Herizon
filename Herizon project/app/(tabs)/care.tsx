@@ -10,6 +10,7 @@ import {
   Alert,
   Linking,
   Platform,
+  Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -29,6 +30,8 @@ import {
   X,
   Bell,
   CheckCircle2,
+  Pencil,
+  Repeat,
 } from 'lucide-react-native';
 import Colors from '../../src/theme/colors';
 import Typography from '../../src/theme/typography';
@@ -64,7 +67,8 @@ export default function CareScreen() {
   const [medClinician, setMedClinician] = useState('');
   const [medReminderEnabled, setMedReminderEnabled] = useState(true);
 
-  // New Appointment Form
+  // Appointment Form & Editing
+  const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
   const [docName, setDocName] = useState('');
   const [specialty, setSpecialty] = useState('General Medicine / Gynecology');
   const [aptDate, setAptDate] = useState(() => {
@@ -77,6 +81,7 @@ export default function CareScreen() {
   const [question1, setQuestion1] = useState('');
   const [question2, setQuestion2] = useState('');
   const [aptReminderEnabled, setAptReminderEnabled] = useState(true);
+  const [isMonthlyRecurring, setIsMonthlyRecurring] = useState(false);
 
   const selectedDateStr = selectedDate.toISOString().split('T')[0];
   const todayStr = new Date().toISOString().split('T')[0];
@@ -169,12 +174,42 @@ export default function CareScreen() {
           style: 'destructive',
           onPress: async () => {
             await storage.deleteMedication(id);
-            await notificationService.cancelNotification(id);
+            await notificationService.cancelMedicationReminders(id);
             loadCareData();
           },
         },
       ]
     );
+  };
+
+  const handleOpenAddAppointment = () => {
+    setEditingAppointment(null);
+    setDocName('');
+    setSpecialty('General Medicine / Gynecology');
+    const d = new Date();
+    d.setDate(d.getDate() + 7);
+    setAptDate(d.toISOString().split('T')[0] + 'T10:00:00');
+    setClinicName('');
+    setReason('');
+    setQuestion1('');
+    setQuestion2('');
+    setAptReminderEnabled(true);
+    setIsMonthlyRecurring(false);
+    setAptModalVisible(true);
+  };
+
+  const handleOpenEditAppointment = (apt: Appointment) => {
+    setEditingAppointment(apt);
+    setDocName(apt.clinician_or_clinic_name);
+    setSpecialty(apt.specialty || '');
+    setAptDate(apt.appointment_at || new Date().toISOString().slice(0, 19));
+    setClinicName(apt.location_or_link || '');
+    setReason(apt.reason_for_visit || '');
+    setQuestion1(apt.questions_to_ask?.[0] || '');
+    setQuestion2(apt.questions_to_ask?.[1] || '');
+    setAptReminderEnabled(apt.reminder_enabled !== false);
+    setIsMonthlyRecurring(!!apt.is_monthly_recurring);
+    setAptModalVisible(true);
   };
 
   const handleSaveAppointment = async () => {
@@ -187,26 +222,76 @@ export default function CareScreen() {
     if (question1.trim()) questions.push(question1.trim());
     if (question2.trim()) questions.push(question2.trim());
 
-    const newApt = await storage.addAppointment({
-      clinician_or_clinic_name: docName.trim(),
-      specialty: specialty.trim() || undefined,
-      appointment_at: aptDate,
-      location_or_link: clinicName.trim() || undefined,
-      reason_for_visit: reason.trim() || undefined,
-      questions_to_ask: questions,
-      reminder_enabled: aptReminderEnabled,
-      status: 'scheduled',
-    });
+    if (editingAppointment) {
+      await storage.updateAppointment(editingAppointment.id, {
+        clinician_or_clinic_name: docName.trim(),
+        specialty: specialty.trim() || undefined,
+        appointment_at: aptDate,
+        location_or_link: clinicName.trim() || undefined,
+        reason_for_visit: reason.trim() || undefined,
+        questions_to_ask: questions,
+        reminder_enabled: aptReminderEnabled,
+        is_monthly_recurring: isMonthlyRecurring,
+      });
 
-    if (aptReminderEnabled) {
-      await notificationService.scheduleAppointmentReminder(
-        newApt.id,
-        newApt.clinician_or_clinic_name,
-        new Date(newApt.appointment_at)
-      );
+      // Cancel previous reminders and reschedule
+      await notificationService.cancelAppointmentReminders(editingAppointment.id);
+
+      if (aptReminderEnabled) {
+        await notificationService.scheduleAppointmentReminder(
+          editingAppointment.id,
+          docName.trim(),
+          new Date(aptDate)
+        );
+      }
+
+      if (isMonthlyRecurring) {
+        const parsedDate = new Date(aptDate);
+        const dayOfMonth = !isNaN(parsedDate.getDate()) ? parsedDate.getDate() : 1;
+        const timePart = aptDate.includes('T') ? aptDate.split('T')[1].substring(0, 5) : '09:00';
+        await notificationService.scheduleMonthlyDoctorReminder(
+          editingAppointment.id,
+          docName.trim(),
+          dayOfMonth,
+          timePart
+        );
+      }
+    } else {
+      const newApt = await storage.addAppointment({
+        clinician_or_clinic_name: docName.trim(),
+        specialty: specialty.trim() || undefined,
+        appointment_at: aptDate,
+        location_or_link: clinicName.trim() || undefined,
+        reason_for_visit: reason.trim() || undefined,
+        questions_to_ask: questions,
+        reminder_enabled: aptReminderEnabled,
+        is_monthly_recurring: isMonthlyRecurring,
+        status: 'scheduled',
+      });
+
+      if (aptReminderEnabled) {
+        await notificationService.scheduleAppointmentReminder(
+          newApt.id,
+          newApt.clinician_or_clinic_name,
+          new Date(newApt.appointment_at)
+        );
+      }
+
+      if (isMonthlyRecurring) {
+        const parsedDate = new Date(newApt.appointment_at);
+        const dayOfMonth = !isNaN(parsedDate.getDate()) ? parsedDate.getDate() : 1;
+        const timePart = newApt.appointment_at.includes('T') ? newApt.appointment_at.split('T')[1].substring(0, 5) : '09:00';
+        await notificationService.scheduleMonthlyDoctorReminder(
+          newApt.id,
+          newApt.clinician_or_clinic_name,
+          dayOfMonth,
+          timePart
+        );
+      }
     }
 
     setAptModalVisible(false);
+    setEditingAppointment(null);
     setDocName('');
     setClinicName('');
     setReason('');
@@ -223,6 +308,7 @@ export default function CareScreen() {
         style: 'destructive',
         onPress: async () => {
           await storage.deleteAppointment(id);
+          await notificationService.cancelAppointmentReminders(id);
           loadCareData();
         },
       },
@@ -485,7 +571,7 @@ export default function CareScreen() {
           <View>
             <View style={styles.sectionHeaderRow}>
               <Text style={styles.sectionTitle}>Consultations & Doctor Visits</Text>
-              <TouchableOpacity onPress={() => setAptModalVisible(true)} style={styles.addBtnSmall}>
+              <TouchableOpacity onPress={handleOpenAddAppointment} style={styles.addBtnSmall}>
                 <Plus size={13} color={Colors.deepBurgundy} />
                 <Text style={styles.addBtnText}>New Visit</Text>
               </TouchableOpacity>
@@ -514,12 +600,33 @@ export default function CareScreen() {
                       <Stethoscope size={18} color={Colors.deepBurgundy} />
                     </View>
                     <View style={{ flex: 1, marginLeft: 10 }}>
-                      <Text style={styles.doctorName}>{apt.clinician_or_clinic_name}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <Text style={styles.doctorName}>{apt.clinician_or_clinic_name}</Text>
+                        {apt.is_monthly_recurring && (
+                          <View style={styles.monthlyBadge}>
+                            <Repeat size={10} color={Colors.deepBurgundy} />
+                            <Text style={styles.monthlyBadgeText}>Monthly</Text>
+                          </View>
+                        )}
+                      </View>
                       <Text style={styles.specialtyText}>{apt.specialty || 'Healthcare Provider'}</Text>
                     </View>
-                    <TouchableOpacity onPress={() => handleDeleteAppointment(apt.id)} style={{ padding: 4 }}>
-                      <Trash2 size={16} color={Colors.deepBurgundy} />
-                    </TouchableOpacity>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                      <TouchableOpacity
+                        onPress={() => handleOpenEditAppointment(apt)}
+                        style={{ padding: 6 }}
+                        accessibilityLabel="Edit consultation"
+                      >
+                        <Pencil size={15} color={Colors.deepBurgundy} />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => handleDeleteAppointment(apt.id)}
+                        style={{ padding: 6 }}
+                        accessibilityLabel="Delete consultation"
+                      >
+                        <Trash2 size={16} color={Colors.mutedText} />
+                      </TouchableOpacity>
+                    </View>
                   </View>
 
                   <View style={styles.aptDetailsBox}>
@@ -558,7 +665,7 @@ export default function CareScreen() {
                 title="No Consultations Scheduled"
                 message="Keep track of your gynecologist, endocrinologist, or GP visits and prepare questions in advance."
                 actionLabel="Schedule Consultation"
-                onActionPress={() => setAptModalVisible(true)}
+                onActionPress={handleOpenAddAppointment}
               />
             )}
           </View>
@@ -676,12 +783,14 @@ export default function CareScreen() {
         </View>
       </Modal>
 
-      {/* Add Appointment Modal */}
+      {/* Add / Edit Appointment Modal */}
       <Modal visible={aptModalVisible} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalSheet}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Schedule Consultation</Text>
+              <Text style={styles.modalTitle}>
+                {editingAppointment ? 'Edit Consultation' : 'Schedule Consultation'}
+              </Text>
               <TouchableOpacity onPress={() => setAptModalVisible(false)} style={styles.modalCloseBtn}>
                 <X size={20} color={Colors.mutedText} />
               </TouchableOpacity>
@@ -733,6 +842,22 @@ export default function CareScreen() {
                 onChangeText={setReason}
               />
 
+              {/* Monthly Recurring Reminder Toggle */}
+              <View style={styles.toggleRow}>
+                <View style={{ flex: 1, paddingRight: 8 }}>
+                  <Text style={styles.toggleLabel}>Monthly Recurring Reminder</Text>
+                  <Text style={styles.toggleSub}>
+                    Repeat reminder on this day every month for routine checkups
+                  </Text>
+                </View>
+                <Switch
+                  value={isMonthlyRecurring}
+                  onValueChange={setIsMonthlyRecurring}
+                  trackColor={{ false: Colors.fineBorder, true: Colors.blossomRose }}
+                  thumbColor={isMonthlyRecurring ? Colors.deepBurgundy : '#f4f3f4'}
+                />
+              </View>
+
               <Text style={styles.modalLabel}>Question to ask doctor #1</Text>
               <TextInput
                 style={styles.modalInput}
@@ -752,7 +877,7 @@ export default function CareScreen() {
               />
 
               <Button
-                title="Save Consultation"
+                title={editingAppointment ? 'Update Consultation' : 'Save Consultation'}
                 onPress={handleSaveAppointment}
                 style={{ marginTop: 14, marginBottom: 20 }}
               />
@@ -1289,5 +1414,40 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     color: Colors.deepBurgundy,
+  },
+  monthlyBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: Colors.paleRoseWhite,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.blossomRose,
+  },
+  monthlyBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: Colors.deepBurgundy,
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.softLavenderMist,
+    padding: 12,
+    borderRadius: 12,
+    marginVertical: 8,
+  },
+  toggleLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.lavenderSlate,
+  },
+  toggleSub: {
+    fontSize: 11,
+    color: Colors.mutedText,
+    marginTop: 2,
   },
 });

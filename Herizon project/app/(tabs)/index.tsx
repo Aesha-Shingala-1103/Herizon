@@ -39,6 +39,7 @@ import Colors from '../../src/theme/colors';
 import Typography from '../../src/theme/typography';
 import Card from '../../src/components/Card';
 import Button from '../../src/components/Button';
+import HealthChart from '../../src/components/HealthChart';
 import UrgentAlertBanner from '../../src/components/UrgentAlertBanner';
 import { executeVoiceCommand } from '../../src/services/voiceExecutor';
 import VoiceInputModal from '../../src/components/VoiceInputModal';
@@ -67,6 +68,8 @@ import {
   MenstrualCycle,
   UrgentSafetyAlert,
   MoodType,
+  LaboratoryResult,
+  MedicalCondition,
 } from '../../src/types';
 
 interface TodayDoseItem {
@@ -98,6 +101,8 @@ export default function HomeScreen() {
   const [upcomingAppointments, setUpcomingAppointments] = useState<Appointment[]>([]);
   const [latestSleep, setLatestSleep] = useState<SleepLog | null>(null);
   const [recentMeasurements, setRecentMeasurements] = useState<HealthMeasurement[]>([]);
+  const [labResults, setLabResults] = useState<LaboratoryResult[]>([]);
+  const [conditions, setConditions] = useState<MedicalCondition[]>([]);
   const [activeUrgentAlert, setActiveUrgentAlert] = useState<UrgentSafetyAlert | null>(null);
 
   // Modals
@@ -213,6 +218,12 @@ export default function HomeScreen() {
       // Measurements
       const measurements = await storage.getMeasurements();
       setRecentMeasurements(measurements.slice(0, 4));
+
+      // Laboratory results & Conditions
+      const labs = await storage.getLaboratoryResults();
+      const conds = await storage.getMedicalConditions();
+      setLabResults(labs);
+      setConditions(conds);
 
       // Check for urgent red-flag alerts in today's entries or measurements
       let urgent: UrgentSafetyAlert | null = null;
@@ -351,6 +362,22 @@ export default function HomeScreen() {
     preferences?.menstrual_tracking_enabled !== false &&
     profile?.menstrual_status !== 'menopausal' &&
     profile?.menstrual_status !== 'not_menstruating';
+
+  // Laboratory & HbA1c progression calculations
+  const hba1cResults = labResults
+    .filter((l) => l.test_name.toLowerCase().includes('hba1c'))
+    .sort((a, b) => new Date(a.test_date).getTime() - new Date(b.test_date).getTime());
+
+  const latestHbA1c = hba1cResults.length > 0 ? hba1cResults[hba1cResults.length - 1] : null;
+
+  const hba1cChartData = hba1cResults.map((l) => ({
+    date: new Date(l.test_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    value: l.test_value,
+  }));
+
+  const otherLabResults = labResults.filter(
+    (l) => !l.test_name.toLowerCase().includes('hba1c')
+  );
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
@@ -865,6 +892,132 @@ export default function HomeScreen() {
             </Card>
           </TouchableOpacity>
         </View>
+
+        {/* Clinical Lab Trends & HbA1c Progression Card */}
+        <View style={styles.sectionHeaderRow}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Activity size={16} color={Colors.deepBurgundy} />
+            <Text style={styles.sectionTitle}>Lab Trends & Biomarkers</Text>
+          </View>
+          <TouchableOpacity onPress={() => router.push('/(tabs)/reports')}>
+            <Text style={styles.linkText}>Reports Vault →</Text>
+          </TouchableOpacity>
+        </View>
+
+        {labResults.length > 0 ? (
+          <Card style={styles.movementCard} variant="elevated">
+            {latestHbA1c && (
+              <View style={{ marginBottom: hba1cResults.length >= 2 ? 10 : 4 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <View>
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: Colors.lavenderSlate, fontFamily: Typography.heading }}>
+                      HbA1c (Glycated Hemoglobin)
+                    </Text>
+                    <Text style={{ fontSize: 11, color: Colors.mutedText }}>
+                      Latest: {latestHbA1c.test_date} • Ref: {latestHbA1c.reference_interval_text || '4.0 - 5.6 %'}
+                    </Text>
+                  </View>
+                  <View
+                    style={{
+                      backgroundColor: latestHbA1c.is_outside_lab_range ? 'rgba(128, 0, 32, 0.1)' : 'rgba(74, 93, 110, 0.1)',
+                      paddingVertical: 4,
+                      paddingHorizontal: 8,
+                      borderRadius: 8,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 14,
+                        fontWeight: '700',
+                        color: latestHbA1c.is_outside_lab_range ? Colors.deepBurgundy : Colors.lavenderSlate,
+                      }}
+                    >
+                      {latestHbA1c.test_value} {latestHbA1c.unit}
+                    </Text>
+                  </View>
+                </View>
+
+                {hba1cResults.length >= 2 ? (
+                  <HealthChart
+                    data={hba1cChartData}
+                    title="HbA1c Progression Over Time"
+                    unit="%"
+                    referenceLineMax={5.6}
+                    referenceLabel="Upper Standard (5.6%)"
+                    primaryColor={Colors.deepBurgundy}
+                    secondaryColor={Colors.blossomRose}
+                    height={150}
+                  />
+                ) : (
+                  <View style={{ backgroundColor: Colors.warmPorcelain, padding: 8, borderRadius: 8, marginTop: 4 }}>
+                    <Text style={{ fontSize: 11, color: Colors.mutedText, lineHeight: 15 }}>
+                      ✓ 1 verified clinical result recorded. Upload your next quarterly report to track your longitudinal HbA1c progression trend.
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
+
+            {/* Other Lab Biomarkers */}
+            {otherLabResults.length > 0 && (
+              <View
+                style={{
+                  marginTop: latestHbA1c ? 8 : 0,
+                  paddingTop: latestHbA1c ? 8 : 0,
+                  borderTopWidth: latestHbA1c ? 1 : 0,
+                  borderTopColor: Colors.fineBorder,
+                }}
+              >
+                <Text style={{ fontSize: 12, fontWeight: '700', color: Colors.lavenderSlate, marginBottom: 6 }}>
+                  Recent Biomarker Results
+                </Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                  {otherLabResults.slice(0, 3).map((lr) => (
+                    <View
+                      key={lr.id}
+                      style={{
+                        backgroundColor: Colors.warmPorcelain,
+                        paddingVertical: 5,
+                        paddingHorizontal: 8,
+                        borderRadius: 8,
+                        borderWidth: 1,
+                        borderColor: Colors.fineBorder,
+                      }}
+                    >
+                      <Text style={{ fontSize: 10, color: Colors.mutedText }}>{lr.test_name}</Text>
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          fontWeight: '700',
+                          color: lr.is_outside_lab_range ? Colors.deepBurgundy : Colors.lavenderSlate,
+                        }}
+                      >
+                        {lr.test_value} {lr.unit}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+          </Card>
+        ) : (
+          <Card style={styles.emptyPatternCard} variant="glass">
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+              <FilePlus size={16} color={Colors.deepBurgundy} />
+              <Text style={styles.emptyAppointmentTitle}>Clinical Lab Vault & Trends</Text>
+            </View>
+            <Text style={styles.emptyPatternText}>
+              No laboratory readings recorded yet. Upload your blood tests, HbA1c, or diagnostic reports to see automatic trend visualizations.
+            </Text>
+            <Button
+              title="Scan or Upload Lab Report"
+              size="small"
+              variant="outline"
+              onPress={() => router.push('/(tabs)/reports')}
+              style={{ alignSelf: 'flex-start', marginTop: 10 }}
+            />
+          </Card>
+        )}
 
         {/* Evidence-Based Recurring Patterns */}
         <View style={styles.sectionHeaderRow}>

@@ -267,6 +267,7 @@ export interface Appointment {
   consultation_summary?: string;
   consultation_notes?: string;
   reminder_enabled: boolean;
+  is_monthly_recurring?: boolean;
   created_at: string;
   updated_at: string;
 }

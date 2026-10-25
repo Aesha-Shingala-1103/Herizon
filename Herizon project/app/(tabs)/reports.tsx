@@ -48,6 +48,7 @@ export default function ReportsScreen() {
   const [ocrModalVisible, setOcrModalVisible] = useState(false);
   const [scannedDocTitle, setScannedDocTitle] = useState('');
   const [scannedDocCategory, setScannedDocCategory] = useState<DocumentCategory>('blood_test');
+  const [scannedDocDate, setScannedDocDate] = useState(new Date().toISOString().split('T')[0]);
   const [, setRawOcrText] = useState('');
   const [extractedCandidates, setExtractedCandidates] = useState<SelectableLabCandidate[]>([]);
   const [tempFileUri, setTempFileUri] = useState<string | null>(null);
@@ -74,7 +75,7 @@ export default function ReportsScreen() {
     const photo = await ocrService.captureDocumentImage();
     setLoading(false);
     if (photo) {
-      processCapturedFile(photo.uri, photo.name);
+      await processCapturedFile(photo.uri, photo.name, 'image/jpeg');
     }
   };
 
@@ -83,26 +84,67 @@ export default function ReportsScreen() {
     const file = await ocrService.pickDocument();
     setLoading(false);
     if (file) {
-      processCapturedFile(file.uri, file.name);
+      await processCapturedFile(file.uri, file.name, file.mimeType);
     }
   };
 
-  const processCapturedFile = (uri: string, filename: string) => {
-    setTempFileUri(uri);
-    setScannedDocTitle(filename.replace(/\.[^/.]+$/, '').replace(/_/g, ' '));
-    setScannedDocCategory('blood_test');
+  const processCapturedFile = async (uri: string, filename: string, mimeType?: string) => {
+    setLoading(true);
+    try {
+      const result = await ocrService.processDocumentFile(uri, filename, mimeType);
 
-    const simulatedOcr =
-      `Laboratory Diagnostics Center\nPatient Report Date: 2026-10-20\n` +
-      `Test: HbA1c : 5.7 % (Reference Range: 4.0 - 5.6 %)\n` +
-      `Test: Thyroid Stimulating Hormone (TSH) : 2.85 uIU/mL (Range: 0.35 - 4.5)\n` +
-      `Test: Hemoglobin : 12.8 g/dL (Normal: 12.0 - 15.5)\n` +
-      `Test: Fasting Blood Sugar : 96 mg/dL (70 - 100)`;
+      if (!result.isRelevant) {
+        Alert.alert(
+          'Unsupported Health Report',
+          "This image doesn't appear to contain a supported health report. Please upload a laboratory report or a clear image of your test results."
+        );
+        return;
+      }
 
-    setRawOcrText(simulatedOcr);
-    const candidates = ocrService.parseLabReportText(simulatedOcr);
-    setExtractedCandidates(candidates.map((c) => ({ ...c, selected: true })));
-    setOcrModalVisible(true);
+      setTempFileUri(uri);
+      setScannedDocTitle(filename.replace(/\.[^/.]+$/, '').replace(/_/g, ' '));
+      setScannedDocCategory('blood_test');
+      setScannedDocDate(result.reportDate || new Date().toISOString().split('T')[0]);
+      setRawOcrText(result.text);
+
+      if (result.candidates.length === 0) {
+        Alert.alert(
+          'Health Document Detected',
+          'We verified this document, but could not automatically detect specific numeric test rows. Would you like to enter your reading manually?',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Add Reading Manually',
+              onPress: () => {
+                setExtractedCandidates([
+                  {
+                    test_name: 'HbA1c',
+                    test_value: 5.6,
+                    unit: '%',
+                    reference_interval_min: 4.0,
+                    reference_interval_max: 5.6,
+                    reference_interval_text: '4.0 - 5.6 %',
+                    is_outside_lab_range: false,
+                    test_date: result.reportDate || new Date().toISOString().split('T')[0],
+                    selected: true,
+                  },
+                ]);
+                setOcrModalVisible(true);
+              },
+            },
+          ]
+        );
+        return;
+      }
+
+      setExtractedCandidates(result.candidates.map((c) => ({ ...c, selected: true })));
+      setOcrModalVisible(true);
+    } catch (e) {
+      console.error('File processing error:', e);
+      Alert.alert('Processing Error', 'Could not process document. Please try a different photo or file.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleConfirmAndSaveDoc = async () => {
@@ -115,13 +157,13 @@ export default function ReportsScreen() {
       const createdDoc = await storage.addMedicalDocument({
         title: scannedDocTitle.trim(),
         category: scannedDocCategory,
-        document_date: new Date().toISOString().split('T')[0],
-        storage_path: tempFileUri || 'local://simulated_doc.pdf',
+        document_date: scannedDocDate,
+        storage_path: tempFileUri || 'local://document.pdf',
         local_uri: tempFileUri || undefined,
         ocr_status: 'completed',
       });
 
-      // Save user-selected lab candidates
+      // Save user-selected and verified lab candidates
       for (const cand of extractedCandidates) {
         if (cand.selected) {
           await storage.addLaboratoryResult({
@@ -131,9 +173,12 @@ export default function ReportsScreen() {
             unit: cand.unit,
             reference_interval_min: cand.reference_interval_min,
             reference_interval_max: cand.reference_interval_max,
-            reference_interval_text: cand.reference_interval_min && cand.reference_interval_max ? `${cand.reference_interval_min} - ${cand.reference_interval_max} ${cand.unit}` : undefined,
+            reference_interval_text:
+              cand.reference_interval_min && cand.reference_interval_max
+                ? `${cand.reference_interval_min} - ${cand.reference_interval_max} ${cand.unit}`
+                : cand.reference_interval_text,
             is_outside_lab_range: cand.is_outside_lab_range || false,
-            test_date: new Date().toISOString().split('T')[0],
+            test_date: cand.test_date || scannedDocDate,
             user_confirmed: true,
           });
         }
@@ -405,30 +450,86 @@ export default function ReportsScreen() {
                 placeholderTextColor={Colors.mutedText}
               />
 
-              <Text style={styles.modalLabel}>Extracted Lab Findings:</Text>
+              <Text style={styles.modalLabel}>Report Date (YYYY-MM-DD)</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={scannedDocDate}
+                onChangeText={setScannedDocDate}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor={Colors.mutedText}
+              />
+
+              <Text style={styles.modalLabel}>Verified Lab Findings (Tap to select / edit):</Text>
               {extractedCandidates.map((cand, idx) => (
-                <TouchableOpacity
+                <View
                   key={idx}
-                  onPress={() => {
-                    const updated = [...extractedCandidates];
-                    updated[idx].selected = !updated[idx].selected;
-                    setExtractedCandidates(updated);
-                  }}
                   style={[
                     styles.candidateRow,
                     cand.selected && styles.candidateRowSelected,
                   ]}
                 >
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.candidateName}>{cand.test_name}</Text>
-                    <Text style={styles.candidateVal}>
-                      {cand.test_value} {cand.unit} (Ref: {cand.reference_interval_min ?? '-'} to {cand.reference_interval_max ?? '-'})
+                  <TouchableOpacity
+                    style={{ flex: 1 }}
+                    onPress={() => {
+                      const updated = [...extractedCandidates];
+                      updated[idx].selected = !updated[idx].selected;
+                      setExtractedCandidates(updated);
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <Text style={styles.candidateName}>{cand.test_name}</Text>
+                      {cand.is_outside_lab_range && (
+                        <Text style={{ fontSize: 10, color: Colors.deepBurgundy, fontWeight: '700' }}>Outside Range</Text>
+                      )}
+                    </View>
+                    <Text style={{ fontSize: 11, color: Colors.mutedText, marginTop: 2 }}>
+                      Lab Reference: {cand.reference_interval_text || 'Standard'}
                     </Text>
+                  </TouchableOpacity>
+
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 8 }}>
+                    <TextInput
+                      style={{
+                        borderWidth: 1,
+                        borderColor: Colors.fineBorder,
+                        borderRadius: 6,
+                        paddingHorizontal: 8,
+                        paddingVertical: 4,
+                        fontSize: 14,
+                        fontWeight: '700',
+                        color: Colors.deepBurgundy,
+                        minWidth: 54,
+                        textAlign: 'center',
+                        backgroundColor: Colors.softWhite,
+                      }}
+                      keyboardType="numeric"
+                      value={String(cand.test_value)}
+                      onChangeText={(newVal) => {
+                        const parsed = parseFloat(newVal);
+                        const updated = [...extractedCandidates];
+                        updated[idx].test_value = isNaN(parsed) ? 0 : parsed;
+                        if (cand.reference_interval_min !== undefined && cand.reference_interval_max !== undefined) {
+                          updated[idx].is_outside_lab_range =
+                            updated[idx].test_value < cand.reference_interval_min ||
+                            updated[idx].test_value > cand.reference_interval_max;
+                        }
+                        setExtractedCandidates(updated);
+                      }}
+                    />
+                    <Text style={{ fontSize: 12, color: Colors.lavenderSlate, fontWeight: '600' }}>{cand.unit}</Text>
+
+                    <TouchableOpacity
+                      onPress={() => {
+                        const updated = [...extractedCandidates];
+                        updated[idx].selected = !updated[idx].selected;
+                        setExtractedCandidates(updated);
+                      }}
+                      style={[styles.selectIndicator, cand.selected && styles.selectIndicatorActive]}
+                    >
+                      {cand.selected && <CheckCircle size={14} color={Colors.softWhite} />}
+                    </TouchableOpacity>
                   </View>
-                  <View style={[styles.selectIndicator, cand.selected && styles.selectIndicatorActive]}>
-                    {cand.selected && <CheckCircle size={14} color={Colors.softWhite} />}
-                  </View>
-                </TouchableOpacity>
+                </View>
               ))}
 
               <View style={styles.modalBtnRow}>

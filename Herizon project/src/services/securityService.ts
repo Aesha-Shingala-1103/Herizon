@@ -69,6 +69,55 @@ export class SecurityService {
   /**
    * Check if device hardware supports biometrics
    */
+  public async hasBiometricHardware(): Promise<boolean> {
+    if (Platform.OS === 'web') return false;
+    try {
+      return await LocalAuthentication.hasHardwareAsync();
+    } catch (e) {
+      console.warn('Biometric hardware check failed:', e);
+      return false;
+    }
+  }
+
+  /**
+   * Check if the user has enrolled biometrics (fingerprint / face) in device settings
+   */
+  public async isBiometricsEnrolled(): Promise<boolean> {
+    if (Platform.OS === 'web') return false;
+    try {
+      return await LocalAuthentication.isEnrolledAsync();
+    } catch (e) {
+      console.warn('Biometric enrollment check failed:', e);
+      return false;
+    }
+  }
+
+  /**
+   * Get human-readable biometric type (e.g. Fingerprint, Face ID, Biometric)
+   */
+  public async getSupportedBiometricTypes(): Promise<string> {
+    if (Platform.OS === 'web') return 'Unavailable';
+    try {
+      const types = await LocalAuthentication.supportedAuthenticationTypesAsync();
+      const names: string[] = [];
+      if (types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) {
+        names.push('Fingerprint');
+      }
+      if (types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) {
+        names.push(Platform.OS === 'ios' ? 'Face ID' : 'Face Unlock');
+      }
+      if (types.includes(LocalAuthentication.AuthenticationType.IRIS)) {
+        names.push('Iris Scanner');
+      }
+      return names.length > 0 ? names.join(' / ') : 'Biometric Sensor';
+    } catch {
+      return 'Biometric Sensor';
+    }
+  }
+
+  /**
+   * Check if device hardware supports biometrics and is enrolled
+   */
   public async isBiometricsAvailable(): Promise<boolean> {
     if (Platform.OS === 'web') return false;
     try {

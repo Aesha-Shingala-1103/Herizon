@@ -252,16 +252,6 @@ export default function AuthScreen() {
             style={{ marginTop: 8 }}
           />
 
-          <TouchableOpacity
-            style={styles.guestButton}
-            onPress={handleContinueAsGuest}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.guestButtonText}>
-              Continue with Private Local Storage →
-            </Text>
-          </TouchableOpacity>
-
           <View style={styles.privacyNote}>
             <Shield size={14} color={Colors.deepBurgundy} />
             <Text style={styles.privacyNoteText}>
@@ -404,16 +394,6 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     color: Colors.lavenderSlate,
-  },
-  guestButton: {
-    marginTop: 14,
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-  guestButtonText: {
-    fontSize: 12,
-    color: Colors.deepBurgundy,
-    fontWeight: '700',
   },
   privacyNote: {
     flexDirection: 'row',

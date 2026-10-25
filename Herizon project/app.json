@@ -32,15 +32,6 @@
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS",
         "android.permission.FOREGROUND_SERVICE",
-        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
-        "RECORD_AUDIO",
-        "POST_NOTIFICATIONS",
-        "ACTIVITY_RECOGNITION",
-        "USE_BIOMETRIC",
-        "USE_FINGERPRINT",
-        "android.permission.RECORD_AUDIO",
-        "android.permission.MODIFY_AUDIO_SETTINGS",
-        "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
       ],
       "package": "com.miraa123.herhealth"
@@ -55,7 +46,13 @@
       "expo-sharing",
       "expo-font",
       "expo-audio",
-      "expo-asset"
+      "expo-asset",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow HerHealth to securely unlock with biometric authentication."
+        }
+      ]
     ],
     "backgroundColor": "#D9DAE4",
     "extra": {

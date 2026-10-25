@@ -9,6 +9,7 @@ import {
   Modal,
   Alert,
   Share,
+  Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -28,6 +29,7 @@ import {
   Building,
   FileText,
   Check,
+  Fingerprint,
 } from 'lucide-react-native';
 import Colors from '../../src/theme/colors';
 import Typography from '../../src/theme/typography';
@@ -82,6 +84,11 @@ export default function ProfileScreen() {
   const [newConditionName, setNewConditionName] = useState('');
   const [newConditionNotes, setNewConditionNotes] = useState('');
 
+  // Biometrics
+  const [hasBiometrics, setHasBiometrics] = useState(false);
+  const [biometricsEnrolled, setBiometricsEnrolled] = useState(false);
+  const [biometricType, setBiometricType] = useState('Fingerprint');
+
   const loadProfileData = async () => {
     try {
       const p = await storage.getProfile();
@@ -92,6 +99,14 @@ export default function ProfileScreen() {
       const allgs = await storage.getAllergies();
       const provs = await storage.getHealthcareProviders();
       const b = await gamificationService.getBadges();
+
+      const hasHardware = await securityService.hasBiometricHardware();
+      const isEnrolled = await securityService.isBiometricsEnrolled();
+      const bType = await securityService.getSupportedBiometricTypes();
+
+      setHasBiometrics(hasHardware);
+      setBiometricsEnrolled(isEnrolled);
+      setBiometricType(bType);
 
       setProfile(p);
       setPreferences(prefs);
@@ -128,6 +143,38 @@ export default function ProfileScreen() {
       setNewPin('');
       loadProfileData();
     }
+  };
+
+  const handleToggleBiometrics = async (enabled: boolean) => {
+    if (enabled) {
+      if (!hasBiometrics) {
+        Alert.alert('Hardware Unavailable', 'No biometric sensor detected on this device.');
+        return;
+      }
+      if (!biometricsEnrolled) {
+        Alert.alert(
+          'Biometrics Not Enrolled',
+          `Please set up your ${biometricType} in your Android Settings first before enabling app lock.`
+        );
+        return;
+      }
+      const authenticated = await securityService.authenticateWithBiometrics(
+        `Confirm ${biometricType} to enable biometric lock`
+      );
+      if (!authenticated) {
+        Alert.alert('Authentication Cancelled', 'Biometric lock was not enabled.');
+        return;
+      }
+    }
+
+    await storage.savePreferences({ biometrics_enabled: enabled });
+    setPreferences((prev) => (prev ? { ...prev, biometrics_enabled: enabled } : null));
+    Alert.alert(
+      enabled ? 'Biometric Lock Active' : 'Biometric Lock Disabled',
+      enabled
+        ? `${biometricType} authentication will now protect your health records on launch.`
+        : 'Biometric unlock has been disabled.'
+    );
   };
 
   const handleAddPeriodLog = async () => {
@@ -522,6 +569,33 @@ export default function ProfileScreen() {
               onPress={() => setPinModalVisible(true)}
               size="small"
               variant="outline"
+            />
+          </View>
+
+          <View style={styles.divider} />
+
+          <View style={styles.settingRow}>
+            <View style={{ flex: 1, paddingRight: 8 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                <Fingerprint size={16} color={Colors.deepBurgundy} />
+                <Text style={styles.settingTitle}>{biometricType} Unlock</Text>
+              </View>
+              <Text style={styles.settingSub}>
+                {!hasBiometrics
+                  ? 'Sensor unavailable on this device'
+                  : !biometricsEnrolled
+                  ? 'Not enrolled in device settings'
+                  : preferences?.biometrics_enabled
+                  ? `Active • Unlocks HerHealth with your ${biometricType}`
+                  : `Enable quick unlock with ${biometricType}`}
+              </Text>
+            </View>
+            <Switch
+              value={Boolean(preferences?.biometrics_enabled && hasBiometrics && biometricsEnrolled)}
+              onValueChange={handleToggleBiometrics}
+              disabled={!hasBiometrics || !biometricsEnrolled}
+              trackColor={{ false: Colors.fineBorder, true: Colors.blossomRose }}
+              thumbColor={preferences?.biometrics_enabled ? Colors.deepBurgundy : Colors.softWhite}
             />
           </View>
 
