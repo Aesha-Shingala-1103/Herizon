@@ -43,11 +43,6 @@
       "expo-audio",
       "expo-asset"
     ],
-    "backgroundColor": "#D9DAE4",
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#D9DAE4"
-    }
+    "backgroundColor": "#D9DAE4"
   }
 }

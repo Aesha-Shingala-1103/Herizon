@@ -161,3 +161,70 @@ npx expo lint
 - Glass blur needs `expo-blur`; without it surfaces are near-opaque.
 - Notification scheduling, step counter, OCR and report upload were not re-verified in this pass.
 - Nothing has been run on a physical device by the author of this change; the JS bundle compiles (Metro, Android) and unit tests pass.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+{
+  "expo": {
+    "name": "HerHealth",
+    "slug": "herhealth",
+    "scheme": "herhealth",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "HerHealth uses the microphone so you can log health entries by voice.",
+        "NSMotionUsageDescription": "HerHealth reads your step count.",
+        "NSFaceIDUsageDescription": "Unlock HerHealth with Face ID."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#D9DAE4",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "RECORD_AUDIO",
+        "POST_NOTIFICATIONS",
+        "ACTIVITY_RECOGNITION",
+        "USE_BIOMETRIC",
+        "USE_FINGERPRINT"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-status-bar",
+      "expo-secure-store",
+      "expo-sharing",
+      "expo-font",
+      "expo-audio",
+      "expo-asset"
+    ],
+    "backgroundColor": "#D9DAE4",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#D9DAE4"
+    }
+  }
+}
