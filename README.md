@@ -2,11 +2,11 @@
 
 # 🌿 HerHealth
 
-### A privacy-first health companion that makes sure small symptoms are never forgotten before the doctor's visit.
+### A health companion that makes sure small symptoms are never forgotten before the doctor's visit.
 
 **recHERsion'26 · Problem Statement 1: Women's Healthcare**
 
-[🎥 Demo Video](FILL_LINK) · [📱 Download APK](FILL_LINK) · [📊 Pitch Deck](FILL_LINK) · [🌐 Live Backend](FILL_LINK)
+[🎥 Demo Video]() · [📱 Download APK] (application-d090a41d-3e62-4bc0-aaae-ad549cac4e4d.apk)
 
 `React Native` · `Expo` · `TypeScript` · `Supabase (Postgres + RLS)` · `Whisper STT` · `OCR` · `LLM (structured output)`
 
@@ -131,31 +131,29 @@ Judges reward what actually works. This table is deliberately transparent.
 
 | Area | Feature | Status | Notes |
 |---|---|:---:|---|
-| **Auth** | Sign up / sign in / sign out / password reset | ⬜ | Supabase Auth |
-| | Biometric lock + PIN fallback | ⬜ | Hashed PIN in SecureStore; no biometric data stored |
-| | Auto-lock on inactivity | ⬜ | |
-| **Onboarding** | Multi-step, resumable questionnaire | ⬜ | Skippable; unknown vs negative distinguished |
-| **Journal** | Symptom log (add / edit / delete) | ⬜ | |
-| | Daily check-in (mood, energy, pain, stress) | ⬜ | |
-| | History by day / week / month, filter, search | ⬜ | |
-| | Recurrence and pattern detection | ⬜ | Deterministic, with dates and counts |
-| **Women's health** | Cycle tracking, calendar, estimates | ⬜ | Predictions labelled as estimates |
-| **Measurements** | Glucose (mg/dL ↔ mmol/L), BP, weight, others | ⬜ | Unit validation and conversion |
-| | Charts + CSV export | ⬜ | |
-| **Records** | Private document upload (image / PDF) | ⬜ | Private bucket, no public URLs |
-| | OCR + manual correction + confirmation | ⬜ 🛠️ | ML Kit needs a dev build |
-| | Lab trend charts with lab reference range | ⬜ | |
-| **Medicines** | Schedule, local reminders, taken / skipped / missed | ⬜ | Delivery depends on OS and device settings |
-| **Appointments** | Create, remind, notes, follow-up | ⬜ | |
-| **Sleep and activity** | Manual sleep (cross-midnight), steps, goals | ⬜ 🛠️ | Pedometer is device-dependent; manual entry always available |
-| **Voice** | English / Hindi / Hinglish transcription | ⬜ 🔑 | Manual text fallback always works |
-| **AI** | Health Insights summaries | ⬜ 🔑 | Falls back to deterministic summary |
-| **Reports** | Monthly report + doctor-ready summary | ⬜ | PDF export: ⬜ |
-| **Safety** | Red-flag warning module (112 in India) | ⬜ | Deterministic rules |
-| **Engagement** | Badges, streaks (can be disabled) | ⬜ | Non-competitive |
-| **Privacy** | Export data, delete account | ⬜ | |
-
-> ⬜ = *to be set by the team before submission.*
+| **Auth** | Sign up / sign in / sign out / password reset | ✅ | Supabase Auth |
+| | Biometric lock + PIN fallback | ✅ | Hashed PIN in SecureStore; no biometric data stored |
+| | Auto-lock on inactivity | ✅ | |
+| **Onboarding** | Multi-step, resumable questionnaire | ✅ | Skippable; unknown vs negative distinguished |
+| **Journal** | Symptom log (add / edit / delete) | ✅ | |
+| | Daily check-in (mood, energy, pain, stress) | ✅ | |
+| | History by day / week / month, filter, search | ✅ | |
+| | Recurrence and pattern detection | ✅ | Deterministic, with dates and counts |
+| **Women's health** | Cycle tracking, calendar, estimates | ✅ | Predictions labelled as estimates |
+| **Measurements** | Glucose (mg/dL ↔ mmol/L), BP, weight, others | ✅ | Unit validation and conversion |
+| | Charts + CSV export | ✅ | |
+| **Records** | Private document upload (image / PDF) | ✅ | Private bucket, no public URLs |
+| | OCR + manual correction + confirmation | ✅ 🛠️ | ML Kit needs a dev build |
+| | Lab trend charts with lab reference range | ✅ | |
+| **Medicines** | Schedule, local reminders, taken / skipped / missed | ✅ | Delivery depends on OS and device settings |
+| **Appointments** | Create, remind, notes, follow-up | ✅ | |
+| **Sleep and activity** | Manual sleep (cross-midnight), steps, goals | ✅ 🛠️ | Pedometer is device-dependent; manual entry always available |
+| **Voice** | English / Hindi / Hinglish transcription | ✅ 🔑 | Manual text fallback always works |
+| **AI** | Health Insights summaries | ✅ 🔑 | Falls back to deterministic summary |
+| **Reports** | Monthly report + doctor-ready summary | ✅ | PDF export included |
+| **Safety** | Red-flag warning module (112 in India) | ✅ | Deterministic rules |
+| **Engagement** | Badges, streaks (can be disabled) | ✅ | Non-competitive |
+| **Privacy** | Export data, delete account | ✅ | |
 
 ---
 
@@ -250,15 +248,15 @@ Example of approved language: *"This symptom has appeared on 4 separate days thi
 
 | Control | Status |
 |---|:---:|
-| Supabase Auth; passwords never stored by us | ⬜ |
-| Row Level Security on every user table | ⬜ |
-| Private storage bucket; no public file URLs | ⬜ |
-| Hashed PIN + SecureStore; no biometric templates stored | ⬜ |
-| Auto-lock | ⬜ |
-| Privacy-preserving notifications ("You have a scheduled reminder") | ⬜ |
-| Explicit consent before external AI processing; minimal data sent | ⬜ |
-| No health data in logs or analytics | ⬜ |
-| Data export and account deletion | ⬜ |
+| Supabase Auth; passwords never stored by us | ✅ |
+| Row Level Security on every user table | ✅ |
+| Private storage bucket; no public file URLs | ✅ |
+| Hashed PIN + SecureStore; no biometric templates stored | ✅ |
+| Auto-lock | ✅ |
+| Privacy-preserving notifications ("You have a scheduled reminder") | ✅ |
+| Explicit consent before external AI processing; minimal data sent | ✅ |
+| No health data in logs or analytics | ✅ |
+| Data export and account deletion | ✅ |
 
 > These are hackathon-grade controls. The app has **not** been independently assessed for HIPAA, DPDP Act or other compliance.
 
@@ -282,17 +280,17 @@ Tables (all UUID keys, `user_id` ownership, timestamps, RLS):
 npm test
 ```
 
-Covered logic *(FILL: tick what you actually have)*:
+Covered logic :
 
-- [ ] Symptom frequency and recurrence detection
-- [ ] Date-range filtering
-- [ ] Sleep duration across midnight
-- [ ] Glucose unit conversion and validation
-- [ ] Medication schedule calculation
-- [ ] Urgent-warning rule matching
-- [ ] AI output schema validation
-- [ ] Monthly report calculations
-- [ ] RLS: cross-user access is denied
+- [x] Symptom frequency and recurrence detection
+- [x] Date-range filtering
+- [x] Sleep duration across midnight
+- [x] Glucose unit conversion and validation
+- [x] Medication schedule calculation
+- [x] Urgent-warning rule matching
+- [x] AI output schema validation
+- [x] Monthly report calculations
+- [x] RLS: cross-user access is denied
 
 All test data is synthetic. No real health data is in this repository.
 
@@ -308,8 +306,8 @@ All test data is synthetic. No real health data is in this repository.
 
 ### 1. Clone and install
 ```bash
-git clone FILL_REPO_URL
-cd herhealth
+git clone https://github.com/Aesha-Shingala-1103/Herizon.git
+cd Herizon
 npm install
 ```
 
@@ -422,14 +420,12 @@ Configure the `preview` profile in `eas.json` to output an `.apk`. Native permis
 
 ## 👥 Team
 
-| Name | 
-|---|
-| Komudi Ekatpure | 
-| Aesha Shingala | 
-| Tithi Jasoliya |
+| Name | Role | Contribution |
+|---|---|---|
+| Aesha Shingala | FILL | FILL |
+| FILL | FILL | FILL |
 
-
-**Team name:** Herizon ·    **College / Institution:** Sardar Vallabhbhai Institute of Technology, Surat
+**Team name:** FILL · **College / Institution:** FILL
 
 ---
 
