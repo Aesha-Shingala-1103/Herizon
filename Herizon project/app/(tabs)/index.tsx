@@ -40,6 +40,7 @@ import UrgentAlertBanner from '../../src/components/UrgentAlertBanner';
 import { executeVoiceCommand } from '../../src/services/voiceExecutor';
 import VoiceInputModal from '../../src/components/VoiceInputModal';
 import { FloralHeroCard } from '../../src/components/FloralDecorations';
+import AppLogo from '../../src/components/AppLogo';
 import { storage } from '../../src/services/storageService';
 import {
   checkUrgentSafetyWarning,
@@ -225,7 +226,7 @@ export default function HomeScreen() {
   const latestGlucose = recentMeasurements.find((m) => m.measurement_type === 'blood_glucose');
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
@@ -246,23 +247,19 @@ export default function HomeScreen() {
         )}
 
         {/* Refined Header */}
-        <View style={styles.topHeader}>
-          <View style={styles.headerLeft}>
-            <View style={styles.dateBadge}>
-              <Sparkles size={11} color={Colors.deepBurgundy} />
-              <Text style={styles.dateBadgeText}>{formattedDate}</Text>
-            </View>
-            <Text style={styles.greetingTitle}>
-              Hello, {profile?.display_name || 'Ananya'}
-            </Text>
-            <Text style={styles.headerSubtext}>Welcome to your private wellness space</Text>
+        <View style={styles.topHeaderRow}>
+          <AppLogo size={36} />
+          <View style={[styles.dateBadge, { marginBottom: 0, flexShrink: 1, marginLeft: 8 }]}>
+            <Sparkles size={11} color={Colors.deepBurgundy} />
+            <Text style={styles.dateBadgeText} numberOfLines={1}>{formattedDate}</Text>
           </View>
 
-          <View style={styles.headerRightActions}>
+          <View style={[styles.headerRightActions, { marginTop: 0, marginLeft: 'auto' }]}>
             <TouchableOpacity
               style={styles.headerIconBtn}
               activeOpacity={0.8}
-              onPress={() => router.push('/(tabs)/profile')}
+              onPress={() => router.push('/(tabs)/care')}
+              accessibilityLabel="Open reminders and appointments"
             >
               <Bell size={18} color={Colors.lavenderSlate} />
             </TouchableOpacity>
@@ -275,6 +272,13 @@ export default function HomeScreen() {
               <Mic size={18} color={Colors.white} />
             </TouchableOpacity>
           </View>
+        </View>
+
+        <View style={styles.greetingBlock}>
+          <Text style={styles.greetingTitle}>
+            Hello, {profile?.display_name || 'Ananya'}
+          </Text>
+          <Text style={styles.headerSubtext}>Welcome to your private wellness space</Text>
         </View>
 
         {/* Floral Hero Section */}
@@ -336,7 +340,12 @@ export default function HomeScreen() {
                   style={[styles.moodItem, isSelected && styles.moodItemSelected]}
                 >
                   <Icon size={20} color={isSelected ? Colors.white : Colors.lavenderSlate} />
-                  <Text style={[styles.moodLabel, isSelected && styles.moodLabelSelected]}>
+                  <Text
+                    style={[styles.moodLabel, isSelected && styles.moodLabelSelected]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.75}
+                  >
                     {m.label}
                   </Text>
                 </TouchableOpacity>
@@ -710,6 +719,14 @@ const styles = StyleSheet.create({
     padding: 18,
     paddingBottom: 40,
   },
+  topHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  greetingBlock: {
+    marginBottom: 8,
+  },
   topHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -826,12 +843,13 @@ const styles = StyleSheet.create({
   moodItem: {
     alignItems: 'center',
     paddingVertical: 8,
-    paddingHorizontal: 10,
+    paddingHorizontal: 2,
     borderRadius: 16,
     backgroundColor: Colors.paleRoseWhite,
     borderWidth: 1,
     borderColor: Colors.fineBorder,
     flex: 1,
+    minWidth: 0,
     marginHorizontal: 3,
   },
   moodItemSelected: {
@@ -840,6 +858,8 @@ const styles = StyleSheet.create({
   },
   moodLabel: {
     fontSize: 10,
+    textAlign: 'center',
+    alignSelf: 'stretch',
     color: Colors.mutedText,
     marginTop: 4,
     fontWeight: '500',
@@ -912,7 +932,7 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '800',
     color: Colors.lavenderSlate,
-    fontFamily: Typography.heading,
+    fontFamily: Typography.numeric,
   },
   stepTarget: {
     fontSize: 11,
@@ -1022,7 +1042,7 @@ const styles = StyleSheet.create({
     fontSize: 19,
     fontWeight: '800',
     color: Colors.lavenderSlate,
-    fontFamily: Typography.heading,
+    fontFamily: Typography.numeric,
     marginBottom: 2,
   },
   miniCardSub: {

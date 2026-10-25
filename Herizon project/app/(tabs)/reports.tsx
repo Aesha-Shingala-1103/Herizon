@@ -220,7 +220,7 @@ export default function ReportsScreen() {
   const distinctTestNames = Array.from(new Set(labResults.map((l) => l.test_name)));
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Screen Header */}
         <View style={styles.screenHeader}>

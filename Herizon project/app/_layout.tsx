@@ -18,6 +18,7 @@ export default function RootLayout() {
   const [isLocked, setIsLocked] = useState(false);
   const [authState, setAuthState] = useState<AuthState | null>(null);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
+  const [splashGone, setSplashGone] = useState(false);
   const [fontsLoaded, fontError] = useFonts(brandFontMap);
 
   // 1. Restore session + profile once, before anything is shown.
@@ -132,11 +133,11 @@ export default function RootLayout() {
         />
       </Stack>
 
-      <BrandSplash done={ready} />
+      <BrandSplash done={ready} onHidden={() => setSplashGone(true)} />
 
       {/* Global PIN Lock Modal */}
       <PinLockModal
-        visible={isLocked}
+        visible={isLocked && splashGone}
         onUnlocked={() => {
           setIsLocked(false);
         }}

@@ -34,6 +34,37 @@ import {
   SleepLog,
 } from '../src/types';
 
+/** Renders the summary text without raw markdown symbols (###, **, >, - ). */
+function SummaryText({ text }: { text: string }) {
+  const lines = (text || '').replace(/\r/g, '').split('\n');
+  return (
+    <View style={styles.summaryBody}>
+      {lines.map((raw, i) => {
+        let line = raw.trim();
+        if (!line) return <View key={i} style={{ height: 6 }} />;
+        const heading = /^#{1,6}\s+/.test(line);
+        line = line.replace(/^#{1,6}\s+/, '').replace(/^>\s?/, '');
+        const bullet = /^[-*•]\s+/.test(line);
+        line = line.replace(/^[-*•]\s+/, '');
+        // Split on **bold** segments and render them bold.
+        const parts = line.split(/(\*\*[^*]+\*\*)/g).filter(Boolean);
+        return (
+          <Text key={i} style={[styles.summaryBodyText, heading && styles.summaryHeading, bullet && styles.summaryBullet]}>
+            {bullet ? '•  ' : ''}
+            {parts.map((part, j) =>
+              part.startsWith('**') && part.endsWith('**') && part.length > 4 ? (
+                <Text key={j} style={styles.summaryBold}>{part.slice(2, -2)}</Text>
+              ) : (
+                <Text key={j}>{part.replace(/\*\*/g, '')}</Text>
+              )
+            )}
+          </Text>
+        );
+      })}
+    </View>
+  );
+}
+
 export default function ConsultationSummaryScreen() {
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
@@ -139,7 +170,7 @@ export default function ConsultationSummaryScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={['left', 'right', 'bottom']}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Header Title */}
         <View style={styles.header}>
@@ -168,7 +199,7 @@ export default function ConsultationSummaryScreen() {
         {/* Structured Summary Body Card */}
         <Card style={styles.summaryCard} variant="glass">
           <Text style={styles.cardHeader}>Recorded Health Summary</Text>
-          <Text style={styles.summaryBodyText}>{summaryMarkdown}</Text>
+          <SummaryText text={summaryMarkdown} />
 
           <View style={styles.complianceNotice}>
             <AlertCircle size={14} color={Colors.deepBurgundy} style={{ marginTop: 2 }} />
@@ -260,11 +291,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     borderRadius: 14,
     alignSelf: 'flex-start',
+    flexShrink: 1,
     marginBottom: 8,
     borderWidth: 1,
     borderColor: 'rgba(219, 161, 165, 0.4)',
   },
   aiBadgeText: {
+    flexShrink: 1,
     fontSize: 11,
     fontWeight: '700',
     color: Colors.deepBurgundy,
@@ -298,7 +331,20 @@ const styles = StyleSheet.create({
     color: Colors.lavenderSlate,
     lineHeight: 20,
     fontFamily: Typography.body,
+  },
+  summaryBody: {
     marginBottom: 14,
+  },
+  summaryHeading: {
+    fontWeight: '700',
+    fontSize: 14,
+    marginTop: 4,
+  },
+  summaryBullet: {
+    paddingLeft: 4,
+  },
+  summaryBold: {
+    fontWeight: '700',
   },
   complianceNotice: {
     flexDirection: 'row',
@@ -374,7 +420,7 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '800',
     color: Colors.lavenderSlate,
-    fontFamily: Typography.heading,
+    fontFamily: Typography.numeric,
   },
   snapshotLabel: {
     fontSize: 11,

@@ -6,6 +6,7 @@
 
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import { File, Paths } from 'expo-file-system';
 import {
   UserProfile,
   SymptomLog,
@@ -16,6 +17,7 @@ import {
   SleepLog,
 } from '../types';
 import { SymptomPatternSummary } from './healthCalculations';
+import { LOGO_DATA_URI } from '../theme/logoBase64';
 
 export interface MonthlyReportData {
   profile: UserProfile | null;
@@ -180,9 +182,12 @@ export class ExportService {
       </head>
       <body>
         <div class="header">
-          <div>
-            <h1 class="title">HerHealth</h1>
-            <p class="subtitle">Personal Health Journal & Consultation Summary</p>
+          <div style="display: flex; align-items: center;">
+            <img src="${LOGO_DATA_URI}" alt="HerHealth" style="width: 48px; height: 48px; margin-right: 12px;" />
+            <div>
+              <h1 class="title">HerHealth</h1>
+              <p class="subtitle">Personal Health Journal & Consultation Summary</p>
+            </div>
           </div>
           <div style="text-align: right;">
             <span class="badge">${monthName} ${year}</span>
@@ -289,15 +294,35 @@ export class ExportService {
         base64: false,
       });
 
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(uri, {
-          UTI: '.pdf',
-          mimeType: 'application/pdf',
-          dialogTitle: 'HerHealth Consultation Summary',
-        });
+      // On Android the file written by expo-print can be rejected by the share sheet
+      // ("Not allowed to read file under given URL"). Copy it to a clean file in the app
+      // cache folder and share that copy instead.
+      let shareUri = uri;
+      try {
+        const target = new File(Paths.cache, 'HerHealth_Doctor_Summary.pdf');
+        if (target.exists) target.delete();
+        await new File(uri).copy(target);
+        shareUri = target.uri;
+      } catch (copyErr) {
+        console.warn('Could not copy PDF to cache, sharing original file:', copyErr);
       }
 
-      return uri;
+      if (await Sharing.isAvailableAsync()) {
+        try {
+          await Sharing.shareAsync(shareUri, {
+            UTI: '.pdf',
+            mimeType: 'application/pdf',
+            dialogTitle: 'HerHealth Consultation Summary',
+          });
+        } catch (shareErr) {
+          console.warn('Share sheet failed, opening the print / save-as-PDF dialog instead:', shareErr);
+          await Print.printAsync({ html });
+        }
+      } else {
+        await Print.printAsync({ html });
+      }
+
+      return shareUri;
     } catch (e) {
       console.error('PDF export failed:', e);
       return null;

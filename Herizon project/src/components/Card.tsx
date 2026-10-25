@@ -78,7 +78,8 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.07,
     shadowRadius: 12,
-    elevation: 2,
+    // Android elevation under a translucent background shows as a white box inside the card.
+    elevation: 0,
   },
   lavender: {
     backgroundColor: Colors.glassLavender,

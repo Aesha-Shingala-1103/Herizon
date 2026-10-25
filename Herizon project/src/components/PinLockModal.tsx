@@ -7,7 +7,8 @@ import {
   TouchableOpacity,
   Vibration,
 } from 'react-native';
-import { Shield, Fingerprint, Delete } from 'lucide-react-native';
+import { Fingerprint, Delete } from 'lucide-react-native';
+import AppLogo from './AppLogo';
 import Colors from '../theme/colors';
 import Typography from '../theme/typography';
 import { securityService } from '../services/securityService';
@@ -83,9 +84,7 @@ export const PinLockModal: React.FC<PinLockModalProps> = ({
     <Modal visible={visible} animationType="fade" transparent={false}>
       <View style={styles.container}>
         <View style={styles.header}>
-          <View style={styles.iconCircle}>
-            <Shield size={34} color={Colors.deepBurgundy} />
-          </View>
+          <AppLogo size={88} style={{ marginBottom: 16 }} />
           <Text style={styles.title}>{title}</Text>
           <Text style={styles.subtitle}>{subtitle}</Text>
         </View>

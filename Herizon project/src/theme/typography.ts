@@ -42,6 +42,14 @@ export const Typography = {
     default: 'System',
   }) as string,
 
+  // Numbers use the body face: the heading serif has old-style digits (7.5h looks uneven).
+  numeric: Platform.select({
+    web: "'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+    ios: brandFontModules.dmSans ? 'DMSans_400Regular' : 'System',
+    android: brandFontModules.dmSans ? 'DMSans_400Regular' : 'Roboto',
+    default: 'System',
+  }) as string,
+
   // Font Scale
   hero: 28,
   pageTitle: 22,

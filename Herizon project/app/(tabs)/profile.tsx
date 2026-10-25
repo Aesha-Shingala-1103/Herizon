@@ -160,7 +160,7 @@ export default function ProfileScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Screen Header */}
         <View style={styles.screenHeader}>
@@ -295,10 +295,15 @@ export default function ProfileScreen() {
                 style={[styles.badgeTile, b.isUnlocked && styles.badgeTileUnlocked]}
               >
                 <Award size={20} color={b.isUnlocked ? Colors.deepBurgundy : Colors.mutedText} />
-                <Text style={[styles.badgeTileTitle, b.isUnlocked && styles.badgeTileTitleUnlocked]}>
+                <Text
+                  style={[styles.badgeTileTitle, b.isUnlocked && styles.badgeTileTitleUnlocked]}
+                  numberOfLines={2}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.75}
+                >
                   {b.title}
                 </Text>
-                <Text style={styles.badgeTileStatus}>
+                <Text style={styles.badgeTileStatus} numberOfLines={1}>
                   {b.isUnlocked ? 'Unlocked' : 'In Progress'}
                 </Text>
               </View>
@@ -662,15 +667,18 @@ const styles = StyleSheet.create({
   },
   badgeRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
   },
   badgeTile: {
-    flex: 1,
+    width: '23%',
     alignItems: 'center',
-    padding: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 3,
     borderRadius: 14,
     backgroundColor: Colors.paleRoseWhite,
-    marginHorizontal: 3,
+    marginHorizontal: '1%',
+    marginBottom: 8,
     borderWidth: 1,
     borderColor: Colors.fineBorder,
   },
@@ -684,6 +692,7 @@ const styles = StyleSheet.create({
     color: Colors.mutedText,
     marginTop: 6,
     textAlign: 'center',
+    alignSelf: 'stretch',
   },
   badgeTileTitleUnlocked: {
     color: Colors.deepBurgundy,

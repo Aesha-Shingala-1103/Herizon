@@ -189,11 +189,7 @@ const styles = StyleSheet.create({
     opacity: 0.88,
   },
   heroGlassOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    minHeight: 180,
     backgroundColor: 'rgba(251, 248, 247, 0.48)',
     padding: 20,
     justifyContent: 'space-between',
@@ -207,6 +203,7 @@ const styles = StyleSheet.create({
   },
   heroContent: {
     zIndex: 2,
+    flexShrink: 1,
   },
   heroBadgeRow: {
     flexDirection: 'row',

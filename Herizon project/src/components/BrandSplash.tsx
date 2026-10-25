@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Animated, Image, AccessibilityInfo } from 'react-native';
+import { View, Text, StyleSheet, Animated, Image, AccessibilityInfo, useWindowDimensions } from 'react-native';
 import Svg, { Ellipse, Circle, G } from 'react-native-svg';
 import Colors from '../theme/colors';
 import Typography from '../theme/typography';
+import AppLogo from './AppLogo';
 
 
 /** Five-petal cherry-blossom emblem drawn in SVG (no external assets). */
@@ -37,13 +38,26 @@ export const BlossomEmblem: React.FC<{ size?: number }> = ({ size = 96 }) => (
 interface Props {
   /** When true the splash fades out and then unmounts. */
   done: boolean;
+  /** Called once the splash has fully faded out and is gone. */
+  onHidden?: () => void;
+  /** Minimum time (ms) the splash stays visible so the logo can actually be seen. */
+  minDuration?: number;
 }
 
-export const BrandSplash: React.FC<Props> = ({ done }) => {
+export const BrandSplash: React.FC<Props> = ({ done, onHidden, minDuration = 1800 }) => {
+  const [minElapsed, setMinElapsed] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setMinElapsed(true), minDuration);
+    return () => clearTimeout(t);
+  }, [minDuration]);
+
   const opacity = useRef(new Animated.Value(1)).current;
   const rise = useRef(new Animated.Value(12)).current;
   const [gone, setGone] = useState(false);
   const [reduceMotion, setReduceMotion] = useState(false);
+  const { width } = useWindowDimensions();
+  const logoSize = Math.round(Math.min(Math.max(width * 0.42, 120), 190));
+  const nameSize = width < 360 ? 32 : 38;
 
   useEffect(() => {
     AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion).catch(() => {});
@@ -55,19 +69,22 @@ export const BrandSplash: React.FC<Props> = ({ done }) => {
   }, [reduceMotion, rise]);
 
   useEffect(() => {
-    if (!done) return;
-    Animated.timing(opacity, { toValue: 0, duration: reduceMotion ? 0 : 280, useNativeDriver: true }).start(() => setGone(true));
-  }, [done, opacity, reduceMotion]);
+    if (!done || !minElapsed) return;
+    Animated.timing(opacity, { toValue: 0, duration: reduceMotion ? 0 : 320, useNativeDriver: true }).start(() => {
+      setGone(true);
+      onHidden?.();
+    });
+  }, [done, minElapsed, opacity, reduceMotion, onHidden]);
 
   if (gone) return null;
   return (
-    <Animated.View style={[StyleSheet.absoluteFill, styles.root, { opacity }]} pointerEvents={done ? 'none' : 'auto'}>
+    <Animated.View style={[StyleSheet.absoluteFill, styles.root, { opacity }]} pointerEvents={done && minElapsed ? 'none' : 'auto'}>
       <View style={styles.blobA} />
       <View style={styles.blobB} />
       <Image source={require('../../assets/cherry_blossom_hero.jpg')} style={styles.hero} resizeMode="cover" />
       <Animated.View style={[styles.center, { transform: [{ translateY: rise }] }]}>
-        <BlossomEmblem size={104} />
-        <Text style={styles.name}>HerHealth</Text>
+        <AppLogo size={logoSize} />
+        <Text style={[styles.name, { fontSize: nameSize }]} numberOfLines={1} adjustsFontSizeToFit>HerHealth</Text>
         <Text style={styles.tagline}>Your health, your rhythm.</Text>
       </Animated.View>
     </Animated.View>
@@ -79,9 +96,9 @@ const styles = StyleSheet.create({
   blobA: { position: 'absolute', width: 420, height: 420, borderRadius: 210, backgroundColor: Colors.dustyBlue, opacity: 0.35, top: -120, right: -140 },
   blobB: { position: 'absolute', width: 360, height: 360, borderRadius: 180, backgroundColor: Colors.blossomRose, opacity: 0.25, bottom: -110, left: -120 },
   hero: { position: 'absolute', top: 0, left: 0, right: 0, height: '38%', opacity: 0.35 },
-  center: { alignItems: 'center', paddingHorizontal: 24 },
-  name: { marginTop: 16, fontSize: 38, color: Colors.lavenderSlate, fontFamily: Typography.heading, letterSpacing: 0.5 },
-  tagline: { marginTop: 6, fontSize: 15, color: Colors.deepBurgundy, fontFamily: Typography.body, letterSpacing: 0.4 },
+  center: { alignItems: 'center', paddingHorizontal: 24, maxWidth: '100%' },
+  name: { marginTop: 16, textAlign: 'center', color: Colors.lavenderSlate, fontFamily: Typography.heading, letterSpacing: 0.5 },
+  tagline: { marginTop: 6, textAlign: 'center', fontSize: 15, color: Colors.deepBurgundy, fontFamily: Typography.body, letterSpacing: 0.4 },
 });
 
 export default BrandSplash;

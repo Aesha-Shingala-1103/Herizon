@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,12 +9,15 @@ import {
   Alert,
   ImageBackground,
   Platform,
+  KeyboardAvoidingView,
+  LayoutChangeEvent,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Shield, Lock, Mail, User, Sparkles } from 'lucide-react-native';
+import { Shield, Lock, Mail, User, Sparkles, Eye, EyeOff } from 'lucide-react-native';
 import Colors from '../src/theme/colors';
 import Typography from '../src/theme/typography';
 import Button from '../src/components/Button';
+import AppLogo from '../src/components/AppLogo';
 import { supabase, isSupabaseConfigured } from '../src/services/supabase';
 import { storage } from '../src/services/storageService';
 import { startLocalSession } from '../src/services/authSession';
@@ -26,6 +29,20 @@ export default function AuthScreen() {
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+
+  // Keep the field being typed in visible above the keyboard.
+  const scrollRef = useRef<ScrollView>(null);
+  const formY = useRef(0);
+  const fieldY = useRef<Record<string, number>>({});
+  const onFormLayout = (e: LayoutChangeEvent) => { formY.current = e.nativeEvent.layout.y; };
+  const onFieldLayout = (key: string) => (e: LayoutChangeEvent) => { fieldY.current[key] = e.nativeEvent.layout.y; };
+  const scrollToField = (key: string) => {
+    setTimeout(() => {
+      const y = formY.current + (fieldY.current[key] ?? 0) - 90;
+      scrollRef.current?.scrollTo({ y: Math.max(y, 0), animated: true });
+    }, 250);
+  };
 
   const handleAuth = async () => {
     if (!/^\S+@\S+\.\S+$/.test(email.trim())) {
@@ -83,7 +100,11 @@ export default function AuthScreen() {
       setLoading(false);
       Alert.alert(
         'Cloud sign-in not configured',
-        'Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY in .env to enable accounts. You can continue in on-device mode, where data stays on this phone only.'
+        'Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY in .env to enable accounts. You can continue in on-device mode, where data stays on this phone only.',
+        [
+          { text: 'OK', style: 'cancel' },
+          { text: 'Continue on this phone', onPress: () => { handleContinueAsGuest(); } },
+        ]
       );
     }
   };
@@ -99,9 +120,16 @@ export default function AuthScreen() {
       style={styles.backgroundImage}
       resizeMode="cover"
     >
-      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={styles.container}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
         {/* Brand Header */}
         <View style={styles.brandHeader}>
+          <AppLogo size={88} style={{ marginBottom: 12 }} />
           <View style={styles.botanicalBadge}>
             <Sparkles size={13} color={Colors.deepBurgundy} />
             <Text style={styles.botanicalBadgeText}>Feminine Digital Healthcare</Text>
@@ -113,7 +141,7 @@ export default function AuthScreen() {
         </View>
 
         {/* Translucent Glass Form Card */}
-        <View style={styles.formCard}>
+        <View style={styles.formCard} onLayout={onFormLayout}>
           <View style={styles.tabToggleRow}>
             <TouchableOpacity
               style={[styles.tabToggle, !isSignUp && styles.tabToggleActive]}
@@ -134,7 +162,7 @@ export default function AuthScreen() {
           </View>
 
           {isSignUp && (
-            <View style={styles.inputGroup}>
+            <View style={styles.inputGroup} onLayout={onFieldLayout('name')}>
               <Text style={styles.inputLabel}>Your Name</Text>
               <View style={styles.inputWrapper}>
                 <User size={18} color={Colors.mutedText} style={styles.inputIcon} />
@@ -144,12 +172,13 @@ export default function AuthScreen() {
                   placeholderTextColor={Colors.mutedText}
                   value={displayName}
                   onChangeText={setDisplayName}
+                  onFocus={() => scrollToField('name')}
                 />
               </View>
             </View>
           )}
 
-          <View style={styles.inputGroup}>
+          <View style={styles.inputGroup} onLayout={onFieldLayout('email')}>
             <Text style={styles.inputLabel}>Email Address</Text>
             <View style={styles.inputWrapper}>
               <Mail size={18} color={Colors.mutedText} style={styles.inputIcon} />
@@ -161,11 +190,12 @@ export default function AuthScreen() {
                 autoCapitalize="none"
                 value={email}
                 onChangeText={setEmail}
+                onFocus={() => scrollToField('email')}
               />
             </View>
           </View>
 
-          <View style={styles.inputGroup}>
+          <View style={styles.inputGroup} onLayout={onFieldLayout('password')}>
             <Text style={styles.inputLabel}>Password</Text>
             <View style={styles.inputWrapper}>
               <Lock size={18} color={Colors.mutedText} style={styles.inputIcon} />
@@ -173,10 +203,25 @@ export default function AuthScreen() {
                 style={styles.input}
                 placeholder="••••••••"
                 placeholderTextColor={Colors.mutedText}
-                secureTextEntry
+                secureTextEntry={!showPassword}
+                autoCapitalize="none"
+                autoCorrect={false}
                 value={password}
                 onChangeText={setPassword}
+                onFocus={() => scrollToField('password')}
               />
+              <TouchableOpacity
+                onPress={() => setShowPassword((v) => !v)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                accessibilityRole="button"
+                accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? (
+                  <EyeOff size={18} color={Colors.mutedText} />
+                ) : (
+                  <Eye size={18} color={Colors.mutedText} />
+                )}
+              </TouchableOpacity>
             </View>
           </View>
 
@@ -207,6 +252,7 @@ export default function AuthScreen() {
           </View>
         </View>
       </ScrollView>
+      </KeyboardAvoidingView>
     </ImageBackground>
   );
 }

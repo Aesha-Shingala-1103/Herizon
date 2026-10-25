@@ -1,3 +1,4 @@
+import AppLogo from '../src/components/AppLogo';
 import React, { useState } from 'react';
 import {
   View,
@@ -9,6 +10,7 @@ import {
   Switch,
   Alert,
   Image,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -231,10 +233,12 @@ export default function OnboardingScreen() {
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         {/* Step 1: Basic Profile */}
         {currentStep === 1 && (
           <View>
+            <AppLogo size={72} style={{ marginBottom: 12 }} />
             <Text style={styles.stepTitle}>Welcome to HerHealth</Text>
             <Text style={styles.stepSubtitle}>
               Let's create your personal profile. Your information remains strictly private and protected.
@@ -687,6 +691,7 @@ export default function OnboardingScreen() {
           </View>
         )}
       </ScrollView>
+      </KeyboardAvoidingView>
 
       {/* Navigation Footer */}
       <View style={styles.footer}>
